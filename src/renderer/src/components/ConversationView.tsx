@@ -37,6 +37,7 @@ export function ConversationView({ onOpenSettings }: Props): JSX.Element {
   const { activeId, conversations } = useConversationsStore()
   const { settings } = useSettingsStore()
   const { isStreaming, streamingState, sendMessage, stopStreaming, retryMessage } = useChat(activeId)
+  const isActiveStreaming = isStreaming && streamingState?.convId === activeId
 
   const missingKey =
     settings !== null &&
@@ -121,7 +122,7 @@ export function ConversationView({ onOpenSettings }: Props): JSX.Element {
                 <Message
                   key={msg.id}
                   message={message}
-                  isStreaming={isStreaming && i === activeConv.messages.length - 1}
+                  isStreaming={isActiveStreaming && i === activeConv.messages.length - 1}
                   onRetry={msg.role === 'user' && msg.error ? () => retryMessage(msg) : undefined}
                 />
               )
@@ -155,7 +156,7 @@ export function ConversationView({ onOpenSettings }: Props): JSX.Element {
       <InputBar
         onSend={sendMessage}
         onStop={stopStreaming}
-        isStreaming={isStreaming}
+        isStreaming={isActiveStreaming}
         missingKey={missingKey}
       />
     </div>

@@ -63,7 +63,7 @@ export function useChat(conversationId: string | null): UseChatReturn {
   const sendMessage = useCallback(
     async (text: string, model: string, provider: string, images?: ImageAttachment[]) => {
       const convId = activeConvIdRef.current
-      if (!convId || isStreaming) return
+      if (!convId || (isStreaming && streamingConvIdRef.current === convId)) return
 
       setIsStreaming(true)
 
@@ -288,7 +288,7 @@ export function useChat(conversationId: string | null): UseChatReturn {
   const retryMessage = useCallback(
     async (msg: Message) => {
       const convId = activeConvIdRef.current
-      if (!convId || isStreaming) return
+      if (!convId || (isStreaming && streamingConvIdRef.current === convId)) return
       // Remove the failed user message — sendMessage will re-add it cleanly
       removeMessageById(convId, msg.id)
       const text = msg.blocks
