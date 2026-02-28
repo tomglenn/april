@@ -207,8 +207,9 @@ export function useChat(conversationId: string | null): UseChatReturn {
             updateLastMessage(convId, (msg) => ({ ...msg, blocks: currentBlocks }))
           }
         } else if (data.type === 'done' && data.finalMessage) {
-          // Replace placeholder with final message
-          updateLastMessage(convId, () => ({ ...data.finalMessage!, id: assistantMsg.id }))
+          // Replace placeholder with final message — use ID not index to avoid
+          // targeting the wrong message if state shifted during streaming
+          updateMessageById(convId, assistantMsg.id, () => ({ ...data.finalMessage!, id: assistantMsg.id }))
           // Persist to store
           const updatedConv = useConversationsStore
             .getState()
@@ -219,7 +220,7 @@ export function useChat(conversationId: string | null): UseChatReturn {
         } else if (data.type === 'aborted') {
           // Preserve partial response — same as done but no error
           if (data.finalMessage) {
-            updateLastMessage(convId, () => ({ ...data.finalMessage!, id: assistantMsg.id }))
+            updateMessageById(convId, assistantMsg.id, () => ({ ...data.finalMessage!, id: assistantMsg.id }))
             const updatedConv = useConversationsStore
               .getState()
               .conversations.find((c) => c.id === convId)
