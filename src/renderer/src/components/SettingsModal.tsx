@@ -3,6 +3,7 @@ import { X, Plus, Trash2, Eye, EyeOff, Loader, CheckCircle, AlertCircle } from '
 import { useSettingsStore } from '../stores/settings'
 import type { MCPServerConfig, Settings } from '../types'
 import type { MCPServerStatus } from '../../../main/mcp'
+import { MCPCatalog } from './MCPCatalog'
 
 type Personality = 'professional' | 'friendly' | 'creative' | 'concise' | 'custom'
 type Tab = 'general' | 'personalisation' | 'advanced'
@@ -118,6 +119,7 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
   const [modelInputFailed, setModelInputFailed] = useState(false)
   const [mcpStatus, setMcpStatus] = useState<MCPServerStatus[]>([])
   const [argsText, setArgsText] = useState<Record<number, string>>({})
+  const [showCatalog, setShowCatalog] = useState(false)
   const [saving, setSaving] = useState(false)
   const [personality, setPersonality] = useState<Personality | null>(() =>
     detectPersonality(settings?.systemPrompt ?? '')
@@ -132,9 +134,12 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
   }, [settings])
 
   useEffect(() => {
-    if (tab === 'advanced') {
+    if (tab !== 'advanced') return
+    window.api.getMcpStatus().then(setMcpStatus).catch(() => {})
+    const id = setInterval(() => {
       window.api.getMcpStatus().then(setMcpStatus).catch(() => {})
-    }
+    }, 2000)
+    return () => clearInterval(id)
   }, [tab])
 
   useEffect(() => {
@@ -172,6 +177,10 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
 
   const addMcp = (): void => {
     setForm((f) => ({ ...f, mcpServers: [...(f.mcpServers ?? []), { name: '', command: '', args: [], enabled: true }] }))
+  }
+
+  const handleAddFromCatalog = (server: MCPServerConfig): void => {
+    setForm((f) => ({ ...f, mcpServers: [...(f.mcpServers ?? []), server] }))
   }
 
   const removeMcp = (i: number): void => {
@@ -444,13 +453,22 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
                   <div>
                     <Label>MCP Servers</Label>
                   </div>
-                  <button
-                    onClick={addMcp}
-                    className="flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-colors hover:opacity-80"
-                    style={{ color: 'var(--accent)', background: 'rgba(59,130,246,0.08)' }}
-                  >
-                    <Plus size={12} /> Add Server
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowCatalog(true)}
+                      className="text-xs px-2 py-1 rounded-md transition-colors hover:opacity-80"
+                      style={{ color: 'var(--accent)', background: 'rgba(59,130,246,0.08)' }}
+                    >
+                      Browse catalog
+                    </button>
+                    <button
+                      onClick={addMcp}
+                      className="flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-colors hover:opacity-80"
+                      style={{ color: 'var(--muted)', background: 'var(--bg)', border: '1px solid var(--border)' }}
+                    >
+                      <Plus size={12} /> Custom
+                    </button>
+                  </div>
                 </div>
 
                 {(form.mcpServers ?? []).length === 0 ? (
@@ -560,6 +578,13 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
           </button>
         </div>
       </div>
+
+      {showCatalog && (
+        <MCPCatalog
+          onAdd={handleAddFromCatalog}
+          onClose={() => setShowCatalog(false)}
+        />
+      )}
     </div>
   )
 }

@@ -103,6 +103,11 @@ export function InputBar({ onSend, onStop, isStreaming, missingKey, prefill }: P
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // Focus when conversation changes
+  useEffect(() => {
+    textareaRef.current?.focus()
+  }, [activeId])
+
   // Auto-resize textarea
   useEffect(() => {
     const ta = textareaRef.current
