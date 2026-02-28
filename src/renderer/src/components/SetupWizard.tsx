@@ -68,11 +68,15 @@ export function SetupWizard(): JSX.Element {
   const [imageKey, setImageKey] = useState('')
   const [personality, setPersonality] = useState<Personality>('friendly')
 
-  // Load models when provider changes in step 2
+  // Load models when provider changes in step 2 (Ollama always uses free text)
   useEffect(() => {
     if (step !== 2) return
     setModels([])
     setModelInputFailed(false)
+    if (provider === 'ollama') {
+      setModel('')
+      return
+    }
     window.api
       .listModels(provider)
       .then((list) => {
@@ -257,7 +261,15 @@ export function SetupWizard(): JSX.Element {
               {/* Model picker */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <label style={{ fontSize: '13px', color: 'var(--muted)' }}>Model</label>
-                {modelInputFailed ? (
+                {provider === 'ollama' ? (
+                  <input
+                    type="text"
+                    placeholder="e.g. llama3.2, mistral, phi3"
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    style={inputStyle}
+                  />
+                ) : modelInputFailed ? (
                   <input
                     type="text"
                     placeholder="Enter model name"
