@@ -36,7 +36,7 @@ interface Props {
 export function ConversationView({ onOpenSettings }: Props): JSX.Element {
   const { activeId, conversations } = useConversationsStore()
   const { settings } = useSettingsStore()
-  const { isStreaming, sendMessage, stopStreaming, retryMessage } = useChat(activeId)
+  const { isStreaming, streamingState, sendMessage, stopStreaming, retryMessage } = useChat(activeId)
 
   const missingKey =
     settings !== null &&
@@ -56,12 +56,12 @@ export function ConversationView({ onOpenSettings }: Props): JSX.Element {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId])
 
-  // Auto-scroll to bottom on new messages
+  // Auto-scroll to bottom on new messages or streaming updates
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [activeConv?.messages])
+  }, [activeConv?.messages, streamingState])
 
   if (!activeId || !activeConv) {
     return (
@@ -113,14 +113,19 @@ export function ConversationView({ onOpenSettings }: Props): JSX.Element {
           </div>
         ) : (
           <>
-            {activeConv.messages.map((msg, i) => (
-              <Message
-                key={msg.id}
-                message={msg}
-                isStreaming={isStreaming && i === activeConv.messages.length - 1}
-                onRetry={msg.role === 'user' && msg.error ? () => retryMessage(msg) : undefined}
-              />
-            ))}
+            {activeConv.messages.map((msg, i) => {
+              const message = streamingState && msg.id === streamingState.msgId
+                ? { ...msg, blocks: streamingState.blocks }
+                : msg
+              return (
+                <Message
+                  key={msg.id}
+                  message={message}
+                  isStreaming={isStreaming && i === activeConv.messages.length - 1}
+                  onRetry={msg.role === 'user' && msg.error ? () => retryMessage(msg) : undefined}
+                />
+              )
+            })}
           </>
         )}
       </div>

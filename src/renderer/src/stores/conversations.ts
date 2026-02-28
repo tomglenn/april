@@ -126,10 +126,12 @@ export const useConversationsStore = create<ConversationsState>((set, get) => ({
   },
 
   renameConv: async (id, title) => {
+    // Read the latest state, update title, and persist.
+    // Re-read after await to avoid overwriting messages added during the IPC call.
     const conv = get().conversations.find((c) => c.id === id)
     if (!conv) return
-    const updated = { ...conv, title }
-    await window.api.updateConversation(updated)
-    get().updateConversation(updated)
+    await window.api.updateConversation({ ...conv, title })
+    const fresh = get().conversations.find((c) => c.id === id)
+    if (fresh) get().updateConversation({ ...fresh, title })
   }
 }))

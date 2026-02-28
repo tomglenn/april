@@ -4,8 +4,15 @@ import { useSettingsStore } from '../stores/settings'
 import type { Message, ContentBlock, ImageAttachment } from '../types'
 import type { ChunkData } from '../../../main/ipc/chat'
 
+export interface StreamingState {
+  convId: string
+  msgId: string
+  blocks: ContentBlock[]
+}
+
 interface UseChatReturn {
   isStreaming: boolean
+  streamingState: StreamingState | null
   sendMessage: (text: string, model: string, provider: string, images?: ImageAttachment[]) => Promise<void>
   stopStreaming: () => void
   retryMessage: (msg: Message) => Promise<void>
@@ -36,18 +43,20 @@ function formatApiError(raw: string): string {
 
 export function useChat(conversationId: string | null): UseChatReturn {
   const [isStreaming, setIsStreaming] = useState(false)
-  const { addMessage, updateLastMessage, updateMessageById, removeMessageById, renameConv } = useConversationsStore()
+  const [streamingState, setStreamingState] = useState<StreamingState | null>(null)
+  const { addMessage, updateMessageById, removeMessageById, renameConv } = useConversationsStore()
   useSettingsStore()
-  const streamingMsgRef = useRef<Message | null>(null)
   const activeConvIdRef = useRef<string | null>(conversationId)
+  const streamingConvIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     activeConvIdRef.current = conversationId
   }, [conversationId])
 
   const stopStreaming = useCallback(() => {
-    if (activeConvIdRef.current && isStreaming) {
-      window.api.abortMessage(activeConvIdRef.current)
+    const target = streamingConvIdRef.current ?? activeConvIdRef.current
+    if (target && isStreaming) {
+      window.api.abortMessage(target)
     }
   }, [isStreaming])
 
@@ -91,7 +100,7 @@ export function useChat(conversationId: string | null): UseChatReturn {
         timestamp: Date.now()
       }
       addMessage(convId, assistantMsg)
-      streamingMsgRef.current = assistantMsg
+      const msgId = assistantMsg.id
 
       // Track whether error was already handled by the error chunk
       // (main process sends an error chunk AND re-throws, so both paths fire)
@@ -100,6 +109,7 @@ export function useChat(conversationId: string | null): UseChatReturn {
       const markError = (raw: string): void => {
         if (errorHandled) return
         errorHandled = true
+        setStreamingState(null)
         removeMessageById(convId, assistantMsg.id)
         updateMessageById(convId, userMsg.id, (m) => ({ ...m, error: formatApiError(raw) }))
         // Persist so the empty assistant placeholder isn't on disk at next startup
@@ -107,14 +117,22 @@ export function useChat(conversationId: string | null): UseChatReturn {
         if (updatedConv) window.api.updateConversation(updatedConv)
       }
 
-      // Accumulate streaming state
+      // Accumulate streaming state — kept in closure, pushed to React state for rendering.
+      // The store is NOT touched during streaming; only committed on done/aborted.
       let currentBlocks: ContentBlock[] = []
       let currentTextIdx = -1
       let currentThinkingIdx = -1
       let currentToolIdx = -1
       let currentToolInput = ''
 
+      const pushBlocks = (): void => {
+        setStreamingState({ convId, msgId, blocks: currentBlocks })
+      }
+
       const handleChunk = (data: ChunkData): void => {
+        // Only process chunks belonging to this conversation
+        if (data.conversationId && data.conversationId !== convId) return
+
         if (data.type === 'text_delta' && data.text) {
           if (currentTextIdx === -1) {
             currentTextIdx = currentBlocks.length
@@ -127,7 +145,7 @@ export function useChat(conversationId: string | null): UseChatReturn {
               ...currentBlocks.slice(currentTextIdx + 1)
             ]
           }
-          updateLastMessage(convId, (msg) => ({ ...msg, blocks: currentBlocks }))
+          pushBlocks()
         } else if (data.type === 'thinking_delta' && data.thinking) {
           if (currentThinkingIdx === -1) {
             currentThinkingIdx = currentBlocks.length
@@ -143,7 +161,7 @@ export function useChat(conversationId: string | null): UseChatReturn {
               ...currentBlocks.slice(currentThinkingIdx + 1)
             ]
           }
-          updateLastMessage(convId, (msg) => ({ ...msg, blocks: currentBlocks }))
+          pushBlocks()
         } else if (data.type === 'tool_use_start') {
           currentToolIdx = currentBlocks.length
           currentToolInput = ''
@@ -156,10 +174,8 @@ export function useChat(conversationId: string | null): UseChatReturn {
               input: {}
             }
           ]
-          updateLastMessage(convId, (msg) => ({ ...msg, blocks: currentBlocks }))
+          pushBlocks()
         } else if (data.type === 'turn_start') {
-          // New API turn beginning — reset per-turn text/thinking indices so new
-          // blocks are created rather than appending to blocks from the previous turn
           currentTextIdx = -1
           currentThinkingIdx = -1
           currentToolIdx = -1
@@ -173,7 +189,7 @@ export function useChat(conversationId: string | null): UseChatReturn {
               content: data.content || ''
             }
           ]
-          updateLastMessage(convId, (msg) => ({ ...msg, blocks: currentBlocks }))
+          pushBlocks()
         } else if (data.type === 'image_block' && data.imageData) {
           currentBlocks = [
             ...currentBlocks,
@@ -183,7 +199,7 @@ export function useChat(conversationId: string | null): UseChatReturn {
               data: data.imageData
             }
           ]
-          updateLastMessage(convId, (msg) => ({ ...msg, blocks: currentBlocks }))
+          pushBlocks()
         } else if (data.type === 'tool_use_delta' && data.toolInput) {
           currentToolInput += data.toolInput
           if (currentToolIdx >= 0) {
@@ -204,49 +220,47 @@ export function useChat(conversationId: string | null): UseChatReturn {
               { ...block, input: parsedInput },
               ...currentBlocks.slice(currentToolIdx + 1)
             ]
-            updateLastMessage(convId, (msg) => ({ ...msg, blocks: currentBlocks }))
+            pushBlocks()
           }
-        } else if (data.type === 'done' && data.finalMessage) {
-          // Replace placeholder with final message — use ID not index to avoid
-          // targeting the wrong message if state shifted during streaming
-          updateMessageById(convId, assistantMsg.id, () => ({ ...data.finalMessage!, id: assistantMsg.id }))
-          // Persist to store
-          const updatedConv = useConversationsStore
-            .getState()
-            .conversations.find((c) => c.id === convId)
-          if (updatedConv) {
-            window.api.updateConversation(updatedConv)
-          }
-        } else if (data.type === 'aborted') {
-          // Preserve partial response — same as done but no error
-          if (data.finalMessage) {
-            updateMessageById(convId, assistantMsg.id, () => ({ ...data.finalMessage!, id: assistantMsg.id }))
-            const updatedConv = useConversationsStore
-              .getState()
-              .conversations.find((c) => c.id === convId)
-            if (updatedConv) window.api.updateConversation(updatedConv)
-          }
+        } else if (data.type === 'done' || data.type === 'aborted') {
+          // Store commit is handled by the sendMessage return value in finally.
+          // Just clear the streaming overlay so the store-committed message renders.
+          setStreamingState(null)
         } else if (data.type === 'error') {
           markError(data.error || 'Unknown error')
         }
       }
 
+      streamingConvIdRef.current = convId
+      setStreamingState({ convId, msgId, blocks: [] })
       window.api.onChunk(handleChunk)
 
+      let finalMsg: Message | null = null
       try {
-        await window.api.sendMessage({
+        finalMsg = (await window.api.sendMessage({
           conversationId: convId,
           messages: allMessages,
           model,
           provider: provider as 'anthropic' | 'openai' | 'ollama',
           enableThinking: provider === 'anthropic' && model.includes('claude-3-7')
-        })
+        })) ?? null
       } catch (err) {
         markError(err instanceof Error ? err.message : String(err))
       } finally {
         window.api.offChunk(handleChunk)
+
+        // Commit final message to store from the IPC return value.
+        // We cannot rely on the done/aborted chunk because offChunk may
+        // remove the listener before that chunk arrives (IPC race).
+        if (finalMsg && !errorHandled) {
+          updateMessageById(convId, msgId, () => ({ ...finalMsg!, id: msgId }))
+          const updatedConv = useConversationsStore.getState().conversations.find((c) => c.id === convId)
+          if (updatedConv) window.api.updateConversation(updatedConv)
+        }
+
         setIsStreaming(false)
-        streamingMsgRef.current = null
+        setStreamingState(null)
+        streamingConvIdRef.current = null
 
         // Auto-title if first message
         const finalConv = useConversationsStore
@@ -268,7 +282,7 @@ export function useChat(conversationId: string | null): UseChatReturn {
         }
       }
     },
-    [isStreaming, addMessage, updateLastMessage, updateMessageById, removeMessageById, renameConv]
+    [isStreaming, addMessage, updateMessageById, removeMessageById, renameConv]
   )
 
   const retryMessage = useCallback(
@@ -294,5 +308,5 @@ export function useChat(conversationId: string | null): UseChatReturn {
     [isStreaming, removeMessageById, sendMessage]
   )
 
-  return { isStreaming, sendMessage, stopStreaming, retryMessage }
+  return { isStreaming, streamingState, sendMessage, stopStreaming, retryMessage }
 }

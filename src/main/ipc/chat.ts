@@ -38,6 +38,7 @@ export interface ChunkData {
   finalMessage?: Message
   imageData?: string
   imageMediaType?: string
+  conversationId?: string
 }
 
 // ── Image result parser ────────────────────────────────────────────────────────
@@ -455,7 +456,7 @@ export function registerChatHandlers(): void {
     abortControllers.set(payload.conversationId, controller)
 
     const sendChunk = (data: ChunkData): void => {
-      if (!sender.isDestroyed()) sender.send('chat:chunk', data)
+      if (!sender.isDestroyed()) sender.send('chat:chunk', { ...data, conversationId: payload.conversationId })
     }
 
     let finalMsg: Message | null = null
