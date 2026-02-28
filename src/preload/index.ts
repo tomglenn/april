@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { Conversation, Settings, Message } from '../renderer/src/types'
 import type { SendMessagePayload, ChunkData } from '../main/ipc/chat'
+import type { MCPServerStatus } from '../main/mcp'
 
 // ipcRenderer.off requires the exact same function reference passed to ipcRenderer.on.
 // We store the wrapper so onChunk/offChunk use the same reference.
@@ -50,7 +51,11 @@ const api = {
 
   // Providers
   listModels: (provider: string): Promise<string[]> =>
-    ipcRenderer.invoke('providers:models', provider)
+    ipcRenderer.invoke('providers:models', provider),
+
+  // MCP
+  getMcpStatus: (): Promise<MCPServerStatus[]> =>
+    ipcRenderer.invoke('mcp:status')
 }
 
 contextBridge.exposeInMainWorld('api', api)

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import { X, Plus, Trash2, Eye, EyeOff } from 'lucide-react'
+import { X, Plus, Trash2, Eye, EyeOff, Loader, CheckCircle, AlertCircle } from 'lucide-react'
 import { useSettingsStore } from '../stores/settings'
 import type { MCPServerConfig, Settings } from '../types'
+import type { MCPServerStatus } from '../../../main/mcp'
 
 type Personality = 'professional' | 'friendly' | 'creative' | 'concise' | 'custom'
 type Tab = 'general' | 'personalisation' | 'advanced'
@@ -109,12 +110,14 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
       setupCompleted: true,
       userName: '',
       userLocation: '',
-      userBio: ''
+      userBio: '',
+      mcpServers: []
     }
   )
   const [models, setModels] = useState<string[]>([])
   const [modelInputFailed, setModelInputFailed] = useState(false)
-  const [mcpServers, setMcpServers] = useState<MCPServerConfig[]>([])
+  const [mcpStatus, setMcpStatus] = useState<MCPServerStatus[]>([])
+  const [argsText, setArgsText] = useState<Record<number, string>>({})
   const [saving, setSaving] = useState(false)
   const [personality, setPersonality] = useState<Personality | null>(() =>
     detectPersonality(settings?.systemPrompt ?? '')
@@ -122,8 +125,17 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
   const [customPrompt, setCustomPrompt] = useState(PERSONALITY_PROMPTS.friendly)
 
   useEffect(() => {
-    if (settings) setForm(settings)
+    if (settings) {
+      setForm(settings)
+      setArgsText({})
+    }
   }, [settings])
+
+  useEffect(() => {
+    if (tab === 'advanced') {
+      window.api.getMcpStatus().then(setMcpStatus).catch(() => {})
+    }
+  }, [tab])
 
   useEffect(() => {
     setModels([])
@@ -159,15 +171,20 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
   }
 
   const addMcp = (): void => {
-    setMcpServers((prev) => [...prev, { name: '', command: '', args: [], enabled: true }])
+    setForm((f) => ({ ...f, mcpServers: [...(f.mcpServers ?? []), { name: '', command: '', args: [], enabled: true }] }))
   }
 
   const removeMcp = (i: number): void => {
-    setMcpServers((prev) => prev.filter((_, idx) => idx !== i))
+    setForm((f) => ({ ...f, mcpServers: (f.mcpServers ?? []).filter((_, idx) => idx !== i) }))
   }
 
   const updateMcp = (i: number, key: keyof MCPServerConfig, val: string | boolean): void => {
-    setMcpServers((prev) => prev.map((s, idx) => (idx === i ? { ...s, [key]: val } : s)))
+    setForm((f) => ({ ...f, mcpServers: (f.mcpServers ?? []).map((s, idx) => (idx === i ? { ...s, [key]: val } : s)) }))
+  }
+
+  const updateMcpArgs = (i: number, raw: string): void => {
+    setArgsText((t) => ({ ...t, [i]: raw }))
+    setForm((f) => ({ ...f, mcpServers: (f.mcpServers ?? []).map((s, idx) => (idx === i ? { ...s, args: raw.split(' ').filter(Boolean) } : s)) }))
   }
 
   return (
@@ -424,7 +441,9 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
             {tab === 'advanced' && (
               <>
                 <div className="flex items-center justify-between mb-3">
-                  <Label>MCP Servers</Label>
+                  <div>
+                    <Label>MCP Servers</Label>
+                  </div>
                   <button
                     onClick={addMcp}
                     className="flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-colors hover:opacity-80"
@@ -434,62 +453,85 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
                   </button>
                 </div>
 
-                {mcpServers.length === 0 ? (
-                  <p className="text-xs" style={{ color: 'var(--muted)' }}>No MCP servers configured.</p>
+                {(form.mcpServers ?? []).length === 0 ? (
+                  <div>
+                    <p className="text-xs mb-1" style={{ color: 'var(--muted)' }}>No MCP servers configured.</p>
+                    <p className="text-xs" style={{ color: 'var(--muted)', opacity: 0.6 }}>
+                      MCP servers extend April with custom tools. Add a server command and args, enable it, then save.
+                    </p>
+                  </div>
                 ) : (
-                  mcpServers.map((srv, i) => (
-                    <div
-                      key={i}
-                      className="mb-3 p-3 rounded-md"
-                      style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-medium" style={{ color: 'var(--text)' }}>
-                          Server {i + 1}
-                        </span>
-                        <button onClick={() => removeMcp(i)} style={{ color: 'var(--muted)' }}>
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
+                  (form.mcpServers ?? []).map((srv, i) => {
+                    const status = mcpStatus.find((s) => s.name === srv.name)
+                    return (
+                      <div
+                        key={i}
+                        className="mb-3 p-3 rounded-md"
+                        style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            {status ? (
+                              status.connected ? (
+                                <CheckCircle size={11} style={{ color: '#22c55e' }} />
+                              ) : status.error ? (
+                                <AlertCircle size={11} style={{ color: '#ef4444' }} />
+                              ) : (
+                                <Loader size={11} style={{ color: 'var(--muted)' }} />
+                              )
+                            ) : null}
+                            <span className="text-xs font-medium" style={{ color: 'var(--text)' }}>
+                              {srv.name || `Server ${i + 1}`}
+                            </span>
+                            {status?.connected && (
+                              <span className="text-xs" style={{ color: 'var(--muted)' }}>
+                                {status.toolCount} tool{status.toolCount !== 1 ? 's' : ''}
+                              </span>
+                            )}
+                            {status?.error && !status.connected && (
+                              <span className="text-xs truncate max-w-32" style={{ color: '#ef4444' }} title={status.error}>
+                                {status.error}
+                              </span>
+                            )}
+                          </div>
+                          <button onClick={() => removeMcp(i)} className="hover:opacity-80" style={{ color: 'var(--muted)' }}>
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            placeholder="Name"
+                            value={srv.name}
+                            onChange={(e) => updateMcp(i, 'name', e.target.value)}
+                            className="px-2 py-1 rounded text-xs outline-none"
+                            style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }}
+                          />
+                          <input
+                            placeholder="Command (e.g. npx, uvx)"
+                            value={srv.command}
+                            onChange={(e) => updateMcp(i, 'command', e.target.value)}
+                            className="px-2 py-1 rounded text-xs outline-none"
+                            style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }}
+                          />
+                        </div>
                         <input
-                          placeholder="Name"
-                          value={srv.name}
-                          onChange={(e) => updateMcp(i, 'name', e.target.value)}
-                          className="px-2 py-1 rounded text-xs outline-none"
+                          placeholder="Args (space-separated, e.g. @modelcontextprotocol/server-filesystem /path)"
+                          value={argsText[i] ?? srv.args.join(' ')}
+                          onChange={(e) => updateMcpArgs(i, e.target.value)}
+                          className="mt-2 w-full px-2 py-1 rounded text-xs outline-none font-mono"
                           style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }}
                         />
-                        <input
-                          placeholder="Command (e.g. npx)"
-                          value={srv.command}
-                          onChange={(e) => updateMcp(i, 'command', e.target.value)}
-                          className="px-2 py-1 rounded text-xs outline-none"
-                          style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }}
-                        />
+                        <label className="flex items-center gap-2 mt-2 text-xs cursor-pointer" style={{ color: 'var(--muted)' }}>
+                          <input
+                            type="checkbox"
+                            checked={srv.enabled}
+                            onChange={(e) => updateMcp(i, 'enabled', e.target.checked)}
+                          />
+                          Enabled
+                        </label>
                       </div>
-                      <input
-                        placeholder="Args (space-separated)"
-                        value={srv.args.join(' ')}
-                        onChange={(e) =>
-                          setMcpServers((prev) =>
-                            prev.map((s, idx) =>
-                              idx === i ? { ...s, args: e.target.value.split(' ').filter(Boolean) } : s
-                            )
-                          )
-                        }
-                        className="mt-2 w-full px-2 py-1 rounded text-xs outline-none font-mono"
-                        style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }}
-                      />
-                      <label className="flex items-center gap-2 mt-2 text-xs" style={{ color: 'var(--muted)' }}>
-                        <input
-                          type="checkbox"
-                          checked={srv.enabled}
-                          onChange={(e) => updateMcp(i, 'enabled', e.target.checked)}
-                        />
-                        Enabled
-                      </label>
-                    </div>
-                  ))
+                    )
+                  })
                 )}
               </>
             )}

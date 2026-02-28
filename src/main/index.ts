@@ -3,6 +3,8 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerAllHandlers } from './ipc'
 import { store } from './store'
+import { mcpManager } from './mcp'
+import type { Settings } from '../renderer/src/types'
 
 app.setName('April')
 
@@ -119,6 +121,12 @@ app.whenReady().then(() => {
   // Register IPC handlers once
   registerAllHandlers()
 
+  // Start any enabled MCP servers from saved settings
+  const settings = store.get('settings') as Settings
+  if (settings.mcpServers?.length) {
+    mcpManager.syncServers(settings.mcpServers).catch(() => {})
+  }
+
   createWindow()
 
   app.on('activate', () => {
@@ -126,6 +134,10 @@ app.whenReady().then(() => {
     if (wins.length === 0) createWindow()
     else { wins[0].show(); wins[0].focus() }
   })
+})
+
+app.on('before-quit', () => {
+  mcpManager.stopAll()
 })
 
 app.on('window-all-closed', () => {

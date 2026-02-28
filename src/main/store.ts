@@ -39,7 +39,8 @@ const defaults: AppStore = {
     setupCompleted: false,
     userName: '',
     userLocation: '',
-    userBio: ''
+    userBio: '',
+    mcpServers: []
   }
 }
 

@@ -52,6 +52,7 @@ export interface Settings {
   userName: string
   userLocation: string
   userBio: string
+  mcpServers: MCPServerConfig[]
 }
 
 // Extend window for the API bridge
@@ -75,6 +76,7 @@ declare global {
       setSettings: (s: Partial<Settings>) => Promise<Settings>
       listModels: (provider: string) => Promise<string[]>
       abortMessage: (conversationId: string) => void
+      getMcpStatus: () => Promise<import('../../../main/mcp').MCPServerStatus[]>
     }
   }
 }

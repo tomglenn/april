@@ -7,8 +7,8 @@ export interface ToolDefinition {
   description: string
   input_schema: {
     type: 'object'
-    properties: Record<string, { type: string; description: string; enum?: string[] }>
-    required: string[]
+    properties?: Record<string, unknown>
+    required?: string[]
   }
 }
 
@@ -344,6 +344,13 @@ async function generateImage(input: unknown): Promise<string> {
 // ── Executor ─────────────────────────────────────────────────────────────────
 
 export async function executeTool(name: string, input: unknown): Promise<string> {
+  // MCP tools are namespaced as "mcp__<serverName>__<toolName>"
+  if (name.startsWith('mcp__')) {
+    // Lazy import to avoid circular dependency at module load time
+    const { mcpManager } = await import('./mcp')
+    return mcpManager.callTool(name, input)
+  }
+
   const inp = input as Record<string, string>
   try {
     switch (name) {

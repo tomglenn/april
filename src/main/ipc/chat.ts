@@ -4,6 +4,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
 import { store } from '../store'
 import { TOOLS, executeTool } from '../tools'
+import { mcpManager } from '../mcp'
 import type { ToolDefinition } from '../tools'
 import type { Settings, Message, ContentBlock } from '../../renderer/src/types'
 
@@ -460,9 +461,10 @@ export function registerChatHandlers(): void {
     let finalMsg: Message | null = null
 
     try {
-      const availableTools = TOOLS.filter(
-        (t) => t.name !== 'generate_image' || !!settings.openaiApiKey
-      )
+      const availableTools: ToolDefinition[] = [
+        ...TOOLS.filter((t) => t.name !== 'generate_image' || !!settings.openaiApiKey),
+        ...mcpManager.getToolDefinitions()
+      ]
 
       if (payload.provider === 'anthropic') {
         const anthropic = new Anthropic({ apiKey: settings.anthropicApiKey })
