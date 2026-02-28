@@ -103,10 +103,14 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
       defaultModel: 'claude-sonnet-4-6',
       theme: 'dark',
       systemPrompt: '',
-      setupCompleted: true
+      setupCompleted: true,
+      userName: '',
+      userLocation: '',
+      userBio: ''
     }
   )
   const [models, setModels] = useState<string[]>([])
+  const [modelInputFailed, setModelInputFailed] = useState(false)
   const [mcpServers, setMcpServers] = useState<MCPServerConfig[]>([])
   const [saving, setSaving] = useState(false)
   const [personality, setPersonality] = useState<Personality | null>(() =>
@@ -120,7 +124,19 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
 
   // Reload model list whenever the provider changes
   useEffect(() => {
-    window.api.listModels(form.defaultProvider).then(setModels)
+    setModels([])
+    setModelInputFailed(false)
+    if (form.defaultProvider === 'ollama') return
+    window.api
+      .listModels(form.defaultProvider)
+      .then((list) => {
+        if (list.length > 0) {
+          setModels(list)
+        } else {
+          setModelInputFailed(true)
+        }
+      })
+      .catch(() => setModelInputFailed(true))
   }, [form.defaultProvider])
 
   const set = (key: keyof Settings, value: string): void => {
@@ -202,39 +218,60 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
             <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted)' }}>
               Provider
             </label>
-            <select
-              value={form.defaultProvider}
-              onChange={(e) => {
-                set('defaultProvider', e.target.value)
-                // Reset model when provider changes so we don't carry over a model from another provider
-                set('defaultModel', '')
-              }}
-              className="w-full px-3 py-2 rounded-md text-sm outline-none"
-              style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
-            >
-              <option value="anthropic">Anthropic</option>
-              <option value="openai">OpenAI</option>
-              <option value="ollama">Ollama</option>
-            </select>
+            <div className="relative">
+              <select
+                value={form.defaultProvider}
+                onChange={(e) => {
+                  set('defaultProvider', e.target.value)
+                  // Reset model when provider changes so we don't carry over a model from another provider
+                  set('defaultModel', '')
+                }}
+                className="w-full px-3 py-2 rounded-md text-sm outline-none appearance-none pr-8"
+                style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
+              >
+                <option value="anthropic">Anthropic</option>
+                <option value="openai">OpenAI</option>
+                <option value="ollama">Ollama</option>
+              </select>
+              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-base" style={{ color: 'var(--muted)' }}>▾</span>
+            </div>
           </div>
 
           <div className="mb-4">
             <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted)' }}>
               Model
             </label>
-            <select
-              value={form.defaultModel}
-              onChange={(e) => set('defaultModel', e.target.value)}
-              className="w-full px-3 py-2 rounded-md text-sm outline-none font-mono"
-              style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
-            >
-              {models.length === 0 && (
-                <option value={form.defaultModel}>{form.defaultModel || 'Loading...'}</option>
-              )}
-              {models.map((m) => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-            </select>
+            {form.defaultProvider === 'ollama' || modelInputFailed ? (
+              <input
+                type="text"
+                value={form.defaultModel}
+                onChange={(e) => set('defaultModel', e.target.value)}
+                placeholder={form.defaultProvider === 'ollama' ? 'e.g. llama3.2, mistral, phi3' : 'Enter model name'}
+                className="w-full px-3 py-2 rounded-md text-sm outline-none font-mono"
+                style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
+              />
+            ) : models.length > 0 ? (
+              <div className="relative">
+                <select
+                  value={form.defaultModel}
+                  onChange={(e) => set('defaultModel', e.target.value)}
+                  className="w-full px-3 py-2 rounded-md text-sm outline-none font-mono appearance-none pr-8"
+                  style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
+                >
+                  {models.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-base" style={{ color: 'var(--muted)' }}>▾</span>
+              </div>
+            ) : (
+              <div
+                className="w-full px-3 py-2 rounded-md text-sm font-mono"
+                style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--muted)' }}
+              >
+                {form.defaultModel || 'Loading models…'}
+              </div>
+            )}
           </div>
 
           {/* Appearance */}
@@ -260,6 +297,35 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Personalisation */}
+          <p className={SECTION_TITLE} style={{ color: 'var(--muted)' }}>Personalisation</p>
+
+          <Field
+            label="Your name"
+            value={form.userName}
+            onChange={(v) => set('userName', v)}
+            placeholder="What should April call you?"
+          />
+          <Field
+            label="Location (optional)"
+            value={form.userLocation}
+            onChange={(v) => set('userLocation', v)}
+            placeholder="e.g. London, UK"
+          />
+          <div className="mb-4">
+            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted)' }}>
+              About you (optional)
+            </label>
+            <textarea
+              value={form.userBio}
+              onChange={(e) => set('userBio', e.target.value)}
+              rows={3}
+              placeholder="e.g. I'm a software engineer who works mostly in TypeScript…"
+              className="w-full px-3 py-2 rounded-md text-sm outline-none resize-y"
+              style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'inherit' }}
+            />
           </div>
 
           {/* Personality */}

@@ -36,7 +36,10 @@ const defaults: AppStore = {
     defaultModel: 'claude-sonnet-4-6',
     theme: 'dark',
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
-    setupCompleted: false
+    setupCompleted: false,
+    userName: '',
+    userLocation: '',
+    userBio: ''
   }
 }
 

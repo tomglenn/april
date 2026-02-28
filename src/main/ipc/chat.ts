@@ -169,14 +169,24 @@ function messagesToOpenAIFormat(messages: Message[]): OpenAI.ChatCompletionMessa
 
 // ── System prompt helper ──────────────────────────────────────────────────────
 
-function buildSystemPrompt(raw: string): string {
+function buildSystemPrompt(raw: string, settings: Settings): string {
   const date = new Date().toLocaleDateString('en-GB', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
     day: 'numeric'
   })
-  return raw.replace('{{date}}', date)
+  let prompt = raw.replace('{{date}}', date)
+
+  const parts: string[] = []
+  if (settings.userName) parts.push(`The user's name is ${settings.userName}.`)
+  if (settings.userLocation) parts.push(`They are based in ${settings.userLocation}.`)
+  if (settings.userBio) parts.push(settings.userBio)
+  if (parts.length > 0) {
+    prompt += '\n\n## About the user\n' + parts.join(' ')
+  }
+
+  return prompt
 }
 
 // ── Anthropic agentic loop ────────────────────────────────────────────────────
@@ -435,7 +445,7 @@ export function registerChatHandlers(): void {
   ipcMain.handle('chat:send', async (event, payload: SendMessagePayload) => {
     const settings = store.get('settings') as Settings
     const sender = event.sender
-    const systemPrompt = buildSystemPrompt(settings.systemPrompt || '')
+    const systemPrompt = buildSystemPrompt(settings.systemPrompt || '', settings)
 
     const controller = new AbortController()
     // Each loop iteration (tool call) attaches a listener to the signal via the SDK stream;

@@ -49,6 +49,9 @@ export interface Settings {
   theme: 'dark' | 'light' | 'system'
   systemPrompt: string
   setupCompleted: boolean
+  userName: string
+  userLocation: string
+  userBio: string
 }
 
 // Extend window for the API bridge

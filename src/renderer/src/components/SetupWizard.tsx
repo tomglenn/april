@@ -3,7 +3,7 @@ import { Check } from 'lucide-react'
 import { useSettingsStore } from '../stores/settings'
 import type { Provider } from '../types'
 
-type Step = 1 | 2 | 3 | 4 | 'done'
+type Step = 1 | 2 | 3 | 4 | 5 | 'done'
 type Personality = 'professional' | 'friendly' | 'creative' | 'concise' | 'custom'
 
 const PERSONALITY_PROMPTS: Record<Exclude<Personality, 'custom'>, string> = {
@@ -67,6 +67,9 @@ export function SetupWizard(): JSX.Element {
   const [modelInputFailed, setModelInputFailed] = useState(false)
   const [enableImages, setEnableImages] = useState(false)
   const [imageKey, setImageKey] = useState('')
+  const [userName, setUserName] = useState(settings?.userName ?? '')
+  const [userLocation, setUserLocation] = useState(settings?.userLocation ?? '')
+  const [userBio, setUserBio] = useState(settings?.userBio ?? '')
   const [personality, setPersonality] = useState<Personality>('friendly')
   const [customPrompt, setCustomPrompt] = useState(PERSONALITY_PROMPTS.friendly)
 
@@ -115,6 +118,11 @@ export function SetupWizard(): JSX.Element {
     setStep(4)
   }
 
+  async function handleStep4Continue(): Promise<void> {
+    await update({ userName: userName.trim(), userLocation: userLocation.trim(), userBio: userBio.trim() })
+    setStep(5)
+  }
+
   async function handleFinish(): Promise<void> {
     const base = settings?.systemPrompt ?? ''
     const addition = personality === 'custom' ? customPrompt : PERSONALITY_PROMPTS[personality]
@@ -157,7 +165,7 @@ export function SetupWizard(): JSX.Element {
               style={{
                 height: '100%',
                 background: 'var(--accent)',
-                width: `${((Number(step) - 1) / 3) * 100}%`,
+                width: `${((Number(step) - 1) / 4) * 100}%`,
                 transition: 'width 0.3s ease'
               }}
             />
@@ -170,7 +178,7 @@ export function SetupWizard(): JSX.Element {
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '24px', gap: '12px', alignItems: 'center' }}>
               {typeof step === 'number' && (
                 <span style={{ fontSize: '12px', color: 'var(--muted)' }}>
-                  Step {step} of 4
+                  Step {step} of 5
                 </span>
               )}
               <button style={skipBtnStyle} onClick={skipSetup}>
@@ -395,8 +403,68 @@ export function SetupWizard(): JSX.Element {
             </div>
           )}
 
-          {/* ── Step 4: Personality ── */}
+          {/* ── Step 4: About You ── */}
           {step === 4 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div>
+                <h2 style={{ fontSize: '20px', fontWeight: 600, color: 'var(--text)', margin: '0 0 4px' }}>
+                  A little about you
+                </h2>
+                <p style={{ fontSize: '14px', color: 'var(--muted)', margin: 0 }}>
+                  Help April personalise its responses. All fields are optional.
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', color: 'var(--muted)', marginBottom: '6px' }}>
+                    What should April call you?
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Your name"
+                    value={userName}
+                    onChange={(e) => setUserName(e.target.value)}
+                    style={inputStyle}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', color: 'var(--muted)', marginBottom: '6px' }}>
+                    Where are you based? <span style={{ opacity: 0.6 }}>(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. London, UK"
+                    value={userLocation}
+                    onChange={(e) => setUserLocation(e.target.value)}
+                    style={inputStyle}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', color: 'var(--muted)', marginBottom: '6px' }}>
+                    Anything else April should know about you? <span style={{ opacity: 0.6 }}>(optional)</span>
+                  </label>
+                  <textarea
+                    rows={3}
+                    placeholder="e.g. I'm a software engineer who works mostly in TypeScript…"
+                    value={userBio}
+                    onChange={(e) => setUserBio(e.target.value)}
+                    style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <button style={skipBtnStyle} onClick={() => setStep(3)}>← Back</button>
+                <button style={primaryBtnStyle} onClick={handleStep4Continue}>
+                  Continue →
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Step 5: Personality ── */}
+          {step === 5 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <div>
                 <h2 style={{ fontSize: '20px', fontWeight: 600, color: 'var(--text)', margin: '0 0 4px' }}>
@@ -438,7 +506,7 @@ export function SetupWizard(): JSX.Element {
               )}
 
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <button style={skipBtnStyle} onClick={() => setStep(3)}>← Back</button>
+                <button style={skipBtnStyle} onClick={() => setStep(4)}>← Back</button>
                 <button style={primaryBtnStyle} onClick={handleFinish}>
                   Finish Setup →
                 </button>

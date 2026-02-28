@@ -32,7 +32,7 @@ export default function App(): JSX.Element {
   return (
     <div className="flex h-full overflow-hidden" style={{ background: 'var(--bg)' }}>
       <Sidebar onOpenSettings={() => setShowSettings(true)} />
-      <ConversationView />
+      <ConversationView onOpenSettings={() => setShowSettings(true)} />
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       {showWizard && <SetupWizard />}
     </div>

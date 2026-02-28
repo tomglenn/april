@@ -16,6 +16,7 @@ interface Props {
   onSend: (text: string, model: string, provider: string, images?: ImageAttachment[]) => void
   onStop: () => void
   isStreaming: boolean
+  missingKey?: boolean
 }
 
 async function resizeToAttachment(file: File): Promise<ImageAttachment> {
@@ -51,7 +52,7 @@ async function resizeToAttachment(file: File): Promise<ImageAttachment> {
   })
 }
 
-export function InputBar({ onSend, onStop, isStreaming }: Props): JSX.Element {
+export function InputBar({ onSend, onStop, isStreaming, missingKey }: Props): JSX.Element {
   const { settings } = useSettingsStore()
   const [text, setText] = useState('')
   const [images, setImages] = useState<ImageAttachment[]>([])
@@ -134,7 +135,7 @@ export function InputBar({ onSend, onStop, isStreaming }: Props): JSX.Element {
     }
   }
 
-  const canSend = (text.trim().length > 0 || images.length > 0) && !isStreaming && !!settings
+  const canSend = (text.trim().length > 0 || images.length > 0) && !isStreaming && !!settings && !missingKey
 
   return (
     <div
