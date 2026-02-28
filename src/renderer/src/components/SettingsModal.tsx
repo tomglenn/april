@@ -134,6 +134,9 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
       .then((list) => {
         if (list.length > 0) {
           setModels(list)
+          if (!form.defaultModel || !list.includes(form.defaultModel)) {
+            set('defaultModel', list[0])
+          }
         } else {
           setModelInputFailed(true)
         }

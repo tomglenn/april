@@ -36,7 +36,7 @@ function formatApiError(raw: string): string {
 
 export function useChat(conversationId: string | null): UseChatReturn {
   const [isStreaming, setIsStreaming] = useState(false)
-  const { conversations, addMessage, updateLastMessage, updateMessageById, removeMessageById, renameConv } = useConversationsStore()
+  const { addMessage, updateLastMessage, updateMessageById, removeMessageById, renameConv } = useConversationsStore()
   useSettingsStore()
   const streamingMsgRef = useRef<Message | null>(null)
   const activeConvIdRef = useRef<string | null>(conversationId)
@@ -77,8 +77,8 @@ export function useChat(conversationId: string | null): UseChatReturn {
       }
       addMessage(convId, userMsg)
 
-      // Get full conversation for context
-      const conv = conversations.find((c) => c.id === convId)
+      // Get full conversation for context — read directly from store to avoid stale closure
+      const conv = useConversationsStore.getState().conversations.find((c) => c.id === convId)
       const allMessages = conv ? [...conv.messages, userMsg] : [userMsg]
 
       // Create placeholder assistant message
@@ -268,7 +268,7 @@ export function useChat(conversationId: string | null): UseChatReturn {
         }
       }
     },
-    [conversationId, isStreaming, conversations, addMessage, updateLastMessage, updateMessageById, removeMessageById, renameConv]
+    [isStreaming, addMessage, updateLastMessage, updateMessageById, removeMessageById, renameConv]
   )
 
   const retryMessage = useCallback(

@@ -31,9 +31,9 @@ export function registerConversationHandlers(): void {
     const conversations = store.get('conversations') as Conversation[]
     const idx = conversations.findIndex((c) => c.id === conv.id)
     if (idx === -1) return null
-    conversations[idx] = { ...conv, updatedAt: Date.now() }
-    store.set('conversations', conversations)
-    return conversations[idx]
+    const updated = { ...conv, updatedAt: Date.now() }
+    store.set('conversations', conversations.map((c, i) => (i === idx ? updated : c)))
+    return updated
   })
 
   ipcMain.handle('conversations:delete', (_, id: string) => {

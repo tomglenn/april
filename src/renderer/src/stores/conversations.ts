@@ -54,12 +54,12 @@ export const useConversationsStore = create<ConversationsState>((set, get) => ({
     set((state) => ({
       conversations: state.conversations.map((c) => {
         if (c.id !== conversationId) return c
-        const updated = { ...c, messages: [...c.messages, message], updatedAt: Date.now() }
-        // Persist to store
-        window.api.updateConversation(updated)
-        return updated
+        return { ...c, messages: [...c.messages, message], updatedAt: Date.now() }
       })
     }))
+    // Persist outside the updater — never call IPC inside a set() updater
+    const updated = get().conversations.find((c) => c.id === conversationId)
+    if (updated) window.api.updateConversation(updated)
   },
 
   updateLastMessage: (conversationId, updater) => {

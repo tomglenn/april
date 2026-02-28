@@ -10,13 +10,38 @@ import {
 } from 'react'
 import { Send, Square, Paperclip, X } from 'lucide-react'
 import { useSettingsStore } from '../stores/settings'
-import type { ImageAttachment } from '../types'
+import { useConversationsStore } from '../stores/conversations'
+import type { ImageAttachment, Message } from '../types'
+
+function estimateTokens(messages: Message[]): number {
+  let chars = 0
+  for (const msg of messages) {
+    for (const block of msg.blocks) {
+      if (block.type === 'text') chars += block.text.length
+      else if (block.type === 'thinking') chars += (block as { type: 'thinking'; thinking: string }).thinking.length
+      else if (block.type === 'image') chars += 800 // rough image token estimate
+    }
+  }
+  return Math.round(chars / 4)
+}
+
+function getContextWindow(model: string): number | null {
+  const m = model.toLowerCase()
+  if (m.includes('claude')) return 200000
+  if (m.includes('o1') || m.includes('o3')) return 200000
+  if (m.includes('gpt-4o')) return 128000
+  if (m.includes('gpt-4-turbo')) return 128000
+  if (m.includes('gpt-4')) return 8192
+  if (m.includes('gpt-3.5')) return 16385
+  return null
+}
 
 interface Props {
   onSend: (text: string, model: string, provider: string, images?: ImageAttachment[]) => void
   onStop: () => void
   isStreaming: boolean
   missingKey?: boolean
+  prefill?: string
 }
 
 async function resizeToAttachment(file: File): Promise<ImageAttachment> {
@@ -52,9 +77,27 @@ async function resizeToAttachment(file: File): Promise<ImageAttachment> {
   })
 }
 
-export function InputBar({ onSend, onStop, isStreaming, missingKey }: Props): JSX.Element {
+export function InputBar({ onSend, onStop, isStreaming, missingKey, prefill }: Props): JSX.Element {
   const { settings } = useSettingsStore()
+  const { activeId, conversations } = useConversationsStore()
+  const activeConv = conversations.find((c) => c.id === activeId)
+  const model = settings?.defaultModel ?? ''
+  const tokenEstimate = activeConv ? estimateTokens(activeConv.messages) : 0
+  const contextWindow = getContextWindow(model)
+  const contextPct = contextWindow ? Math.min(100, Math.ceil((tokenEstimate / contextWindow) * 100)) : null
+  const contextColor =
+    contextPct === null ? 'var(--muted)'
+    : contextPct >= 80 ? '#ef4444'
+    : contextPct >= 50 ? '#f59e0b'
+    : 'var(--muted)'
   const [text, setText] = useState('')
+
+  useEffect(() => {
+    if (prefill) {
+      setText(prefill)
+      textareaRef.current?.focus()
+    }
+  }, [prefill])
   const [images, setImages] = useState<ImageAttachment[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -186,7 +229,7 @@ export function InputBar({ onSend, onStop, isStreaming, missingKey }: Props): JS
             onChange={(e) => setText(e.target.value)}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder="Message April..."
+            placeholder="Ask anything…"
             rows={1}
             className="resize-none bg-transparent text-sm outline-none py-1 px-1 w-full"
             style={{ color: 'var(--text)', maxHeight: '120px', lineHeight: '1.5' }}
@@ -227,6 +270,18 @@ export function InputBar({ onSend, onStop, isStreaming, missingKey }: Props): JS
           )}
         </div>
       </div>
+
+      {model && (
+        <div className="flex justify-end items-center gap-2 pt-1.5 px-1" style={{ opacity: 0.8 }}>
+          <span className="text-xs font-mono" style={{ color: 'var(--muted)' }}>{model}</span>
+          {contextPct !== null && (
+            <>
+              <span style={{ color: 'var(--muted)', fontSize: '10px' }}>·</span>
+              <span className="text-xs" style={{ color: contextColor }}>{contextPct}% ctx</span>
+            </>
+          )}
+        </div>
+      )}
 
       <input
         ref={fileInputRef}
