@@ -418,7 +418,7 @@ export function SetupWizard(): JSX.Element {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '13px', color: 'var(--muted)', marginBottom: '6px' }}>
-                    What should April call you?
+                    What should April call you? <span style={{ opacity: 0.6 }}>(optional)</span>
                   </label>
                   <input
                     type="text"
