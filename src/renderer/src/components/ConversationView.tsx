@@ -7,7 +7,7 @@ import { useChat } from '../hooks/useChat'
 
 export function ConversationView(): JSX.Element {
   const { activeId, conversations } = useConversationsStore()
-  const { isStreaming, error, sendMessage } = useChat(activeId)
+  const { isStreaming, error, sendMessage, stopStreaming } = useChat(activeId)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const activeConv = conversations.find((c) => c.id === activeId)
@@ -43,19 +43,13 @@ export function ConversationView(): JSX.Element {
           </div>
         ) : (
           <>
-            {activeConv.messages.map((msg) => (
-              <Message key={msg.id} message={msg} />
+            {activeConv.messages.map((msg, i) => (
+              <Message
+                key={msg.id}
+                message={msg}
+                isStreaming={isStreaming && i === activeConv.messages.length - 1}
+              />
             ))}
-            {isStreaming && activeConv.messages[activeConv.messages.length - 1]?.role === 'user' && (
-              <div className="px-6 py-4" style={{ borderBottom: '1px solid var(--border)' }}>
-                <div className="max-w-3xl mx-auto">
-                  <div className="flex items-center gap-2" style={{ color: 'var(--muted)' }}>
-                    <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--accent)' }} />
-                    <span className="text-sm">Responding...</span>
-                  </div>
-                </div>
-              </div>
-            )}
           </>
         )}
       </div>
@@ -71,7 +65,7 @@ export function ConversationView(): JSX.Element {
       )}
 
       {/* Input */}
-      <InputBar onSend={sendMessage} isStreaming={isStreaming} />
+      <InputBar onSend={sendMessage} onStop={stopStreaming} isStreaming={isStreaming} />
     </div>
   )
 }

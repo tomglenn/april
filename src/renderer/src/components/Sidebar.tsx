@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Settings, MessageSquare, Trash2, Pencil, Check, X } from 'lucide-react'
+import { Plus, Settings, MessageSquare, Trash2, Pencil, Check, X, Search } from 'lucide-react'
 import { useConversationsStore } from '../stores/conversations'
 import type { Conversation } from '../types'
 
@@ -107,6 +107,11 @@ function ConversationItem({
 export function Sidebar({ onOpenSettings }: SidebarProps): JSX.Element {
   const { conversations, activeId, setActiveId, createNew, deleteConv, renameConv } =
     useConversationsStore()
+  const [query, setQuery] = useState('')
+
+  const filtered = query.trim()
+    ? conversations.filter((c) => c.title.toLowerCase().includes(query.toLowerCase()))
+    : conversations
 
   const isMac = navigator.platform.toLowerCase().includes('mac')
 
@@ -134,14 +139,41 @@ export function Sidebar({ onOpenSettings }: SidebarProps): JSX.Element {
         </button>
       </div>
 
+      {/* Search */}
+      <div className="px-2 pb-1 shrink-0">
+        <div
+          className="flex items-center gap-1.5 px-2 py-1.5 rounded-md"
+          style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
+        >
+          <Search size={11} style={{ color: 'var(--muted)', flexShrink: 0 }} />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Escape') setQuery('') }}
+            placeholder="Filter..."
+            className="flex-1 bg-transparent text-xs outline-none"
+            style={{ color: 'var(--text)' }}
+          />
+          {query && (
+            <button onClick={() => setQuery('')} style={{ color: 'var(--muted)', flexShrink: 0 }}>
+              <X size={10} />
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Conversation list */}
       <div className="flex-1 overflow-y-auto py-1">
         {conversations.length === 0 ? (
           <div className="px-3 py-4 text-xs text-center" style={{ color: 'var(--muted)' }}>
             No conversations yet
           </div>
+        ) : filtered.length === 0 ? (
+          <div className="px-3 py-4 text-xs text-center" style={{ color: 'var(--muted)' }}>
+            No matches
+          </div>
         ) : (
-          conversations.map((conv) => (
+          filtered.map((conv) => (
             <ConversationItem
               key={conv.id}
               conv={conv}

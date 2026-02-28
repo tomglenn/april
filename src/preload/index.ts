@@ -17,6 +17,8 @@ const api = {
   offChunk: (cb: (data: ChunkData) => void): void => {
     ipcRenderer.off('chat:chunk', (_, data) => cb(data))
   },
+  abortMessage: (conversationId: string): void =>
+    ipcRenderer.send('chat:abort', conversationId),
 
   // Conversations
   listConversations: (): Promise<Conversation[]> =>

@@ -22,6 +22,7 @@ export interface ChunkData {
     | 'tool_result'
     | 'turn_start'
     | 'done'
+    | 'aborted'
     | 'error'
   text?: string
   thinking?: string
@@ -33,6 +34,10 @@ export interface ChunkData {
   finalMessage?: Message
 }
 
+// ── Abort registry ────────────────────────────────────────────────────────────
+
+const abortControllers = new Map<string, AbortController>()
+
 // ── Format converters ─────────────────────────────────────────────────────────
 
 function messagesToAnthropicFormat(messages: Message[]): Anthropic.MessageParam[] {
@@ -40,11 +45,23 @@ function messagesToAnthropicFormat(messages: Message[]): Anthropic.MessageParam[
 
   for (const msg of messages) {
     if (msg.role === 'user') {
-      const text = msg.blocks
+      const imageBlocks = msg.blocks
+        .filter((b) => b.type === 'image')
+        .map((b) => {
+          const img = b as { type: 'image'; mediaType: string; data: string }
+          return {
+            type: 'image' as const,
+            source: {
+              type: 'base64' as const,
+              media_type: img.mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+              data: img.data
+            }
+          }
+        })
+      const textBlocks = msg.blocks
         .filter((b) => b.type === 'text')
-        .map((b) => (b as { type: 'text'; text: string }).text)
-        .join('\n')
-      result.push({ role: 'user' as const, content: text })
+        .map((b) => ({ type: 'text' as const, text: (b as { type: 'text'; text: string }).text }))
+      result.push({ role: 'user' as const, content: [...imageBlocks, ...textBlocks] })
       continue
     }
 
@@ -106,6 +123,26 @@ function messagesToAnthropicFormat(messages: Message[]): Anthropic.MessageParam[
 
 function messagesToOpenAIFormat(messages: Message[]): OpenAI.ChatCompletionMessageParam[] {
   return messages.map((msg) => {
+    if (msg.role === 'user' && msg.blocks.some((b) => b.type === 'image')) {
+      const content: OpenAI.ChatCompletionContentPart[] = [
+        ...msg.blocks
+          .filter((b) => b.type === 'image')
+          .map((b) => {
+            const img = b as { type: 'image'; mediaType: string; data: string }
+            return {
+              type: 'image_url' as const,
+              image_url: { url: `data:${img.mediaType};base64,${img.data}` }
+            }
+          }),
+        ...msg.blocks
+          .filter((b) => b.type === 'text')
+          .map((b) => ({
+            type: 'text' as const,
+            text: (b as { type: 'text'; text: string }).text
+          }))
+      ]
+      return { role: 'user' as const, content }
+    }
     const text = msg.blocks
       .filter((b) => b.type === 'text')
       .map((b) => (b as { type: 'text'; text: string }).text)
@@ -132,70 +169,89 @@ async function runAnthropicLoop(
   anthropic: Anthropic,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   baseParams: any,
-  sendChunk: (data: ChunkData) => void
+  sendChunk: (data: ChunkData) => void,
+  signal: AbortSignal
 ): Promise<Message> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const messages: any[] = [...baseParams.messages]
   const allBlocks: ContentBlock[] = []
 
+  const makePartialMessage = (): Message => ({
+    id: crypto.randomUUID(),
+    role: 'assistant',
+    blocks: allBlocks,
+    model: baseParams.model,
+    provider: 'anthropic',
+    timestamp: Date.now()
+  })
+
   while (true) {
     // Signal renderer to reset its per-turn block indices
     if (allBlocks.length > 0) sendChunk({ type: 'turn_start' })
 
-    const stream = anthropic.messages.stream({ ...baseParams, messages })
+    const stream = anthropic.messages.stream({ ...baseParams, messages }, { signal })
 
     // Collect tool_use blocks from this turn so we can execute them
     const turnToolUses: Array<{ id: string; name: string; input: string }> = []
     let currentToolUseEntry: { id: string; name: string; input: string } | null = null
     let stopReason = 'end_turn'
 
-    for await (const ev of stream) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const event = ev as any
+    try {
+      for await (const ev of stream) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const event = ev as any
 
-      if (event.type === 'message_delta') {
-        stopReason = event.delta.stop_reason ?? 'end_turn'
-      } else if (event.type === 'content_block_start') {
-        const cb = event.content_block
-        if (cb.type === 'text') {
-          allBlocks.push({ type: 'text', text: '' })
-        } else if (cb.type === 'thinking') {
-          allBlocks.push({ type: 'thinking', thinking: '' })
-        } else if (cb.type === 'tool_use') {
-          allBlocks.push({ type: 'tool_use', id: cb.id, name: cb.name, input: {} })
-          currentToolUseEntry = { id: cb.id, name: cb.name, input: '' }
-          sendChunk({ type: 'tool_use_start', toolUseId: cb.id, toolName: cb.name })
-        }
-      } else if (event.type === 'content_block_delta') {
-        const last = allBlocks[allBlocks.length - 1]
-        if (event.delta.type === 'text_delta') {
-          if (last?.type === 'text') last.text += event.delta.text
-          sendChunk({ type: 'text_delta', text: event.delta.text })
-        } else if (event.delta.type === 'thinking_delta') {
-          if (last?.type === 'thinking') last.thinking += event.delta.thinking
-          sendChunk({ type: 'thinking_delta', thinking: event.delta.thinking })
-        } else if (event.delta.type === 'input_json_delta') {
+        if (event.type === 'message_delta') {
+          stopReason = event.delta.stop_reason ?? 'end_turn'
+        } else if (event.type === 'content_block_start') {
+          const cb = event.content_block
+          if (cb.type === 'text') {
+            allBlocks.push({ type: 'text', text: '' })
+          } else if (cb.type === 'thinking') {
+            allBlocks.push({ type: 'thinking', thinking: '' })
+          } else if (cb.type === 'tool_use') {
+            allBlocks.push({ type: 'tool_use', id: cb.id, name: cb.name, input: {} })
+            currentToolUseEntry = { id: cb.id, name: cb.name, input: '' }
+            sendChunk({ type: 'tool_use_start', toolUseId: cb.id, toolName: cb.name })
+          }
+        } else if (event.type === 'content_block_delta') {
+          const last = allBlocks[allBlocks.length - 1]
+          if (event.delta.type === 'text_delta') {
+            if (last?.type === 'text') last.text += event.delta.text
+            sendChunk({ type: 'text_delta', text: event.delta.text })
+          } else if (event.delta.type === 'thinking_delta') {
+            if (last?.type === 'thinking') last.thinking += event.delta.thinking
+            sendChunk({ type: 'thinking_delta', thinking: event.delta.thinking })
+          } else if (event.delta.type === 'input_json_delta') {
+            if (currentToolUseEntry) {
+              currentToolUseEntry.input += event.delta.partial_json
+              sendChunk({ type: 'tool_use_delta', toolInput: event.delta.partial_json })
+            }
+          }
+        } else if (event.type === 'content_block_stop') {
           if (currentToolUseEntry) {
-            currentToolUseEntry.input += event.delta.partial_json
-            sendChunk({ type: 'tool_use_delta', toolInput: event.delta.partial_json })
+            try {
+              const parsedInput = JSON.parse(currentToolUseEntry.input || '{}')
+              const block = allBlocks.find(
+                (b) => b.type === 'tool_use' && (b as { id: string }).id === currentToolUseEntry!.id
+              ) as { type: 'tool_use'; id: string; name: string; input: unknown } | undefined
+              if (block) block.input = parsedInput
+            } catch {
+              // leave input as-is
+            }
+            turnToolUses.push(currentToolUseEntry)
+            currentToolUseEntry = null
           }
-        }
-      } else if (event.type === 'content_block_stop') {
-        if (currentToolUseEntry) {
-          try {
-            const parsedInput = JSON.parse(currentToolUseEntry.input || '{}')
-            const block = allBlocks.find(
-              (b) => b.type === 'tool_use' && (b as { id: string }).id === currentToolUseEntry!.id
-            ) as { type: 'tool_use'; id: string; name: string; input: unknown } | undefined
-            if (block) block.input = parsedInput
-          } catch {
-            // leave input as-is
-          }
-          turnToolUses.push(currentToolUseEntry)
-          currentToolUseEntry = null
         }
       }
+    } catch (err: unknown) {
+      const e = err as { name?: string }
+      if (signal.aborted || e?.name === 'AbortError') return makePartialMessage()
+      throw err
     }
+
+    // Stop tool execution if aborted
+    if (signal.aborted) break
 
     if (stopReason !== 'tool_use' || turnToolUses.length === 0) break
 
@@ -222,14 +278,7 @@ async function runAnthropicLoop(
     messages.push({ role: 'user', content: toolResults })
   }
 
-  return {
-    id: crypto.randomUUID(),
-    role: 'assistant',
-    blocks: allBlocks,
-    model: baseParams.model,
-    provider: 'anthropic',
-    timestamp: Date.now()
-  }
+  return makePartialMessage()
 }
 
 // ── OpenAI agentic loop ───────────────────────────────────────────────────────
@@ -238,7 +287,8 @@ async function runOpenAILoop(
   openai: OpenAI,
   model: string,
   initialMessages: OpenAI.ChatCompletionMessageParam[],
-  sendChunk: (data: ChunkData) => void
+  sendChunk: (data: ChunkData) => void,
+  signal: AbortSignal
 ): Promise<Message> {
   const messages = [...initialMessages]
   const allBlocks: ContentBlock[] = []
@@ -248,50 +298,76 @@ async function runOpenAILoop(
     function: { name: t.name, description: t.description, parameters: t.input_schema }
   }))
 
+  const makePartialMessage = (): Message => ({
+    id: crypto.randomUUID(),
+    role: 'assistant',
+    blocks: allBlocks,
+    model,
+    provider: 'openai',
+    timestamp: Date.now()
+  })
+
   while (true) {
     if (allBlocks.length > 0) sendChunk({ type: 'turn_start' })
 
-    const stream = await openai.chat.completions.create({
-      model,
-      messages,
-      tools: openaiTools,
-      stream: true
-    })
+    let stream: Awaited<ReturnType<typeof openai.chat.completions.create>>
+    try {
+      stream = await openai.chat.completions.create(
+        { model, messages, tools: openaiTools, stream: true },
+        { signal }
+      )
+    } catch (err: unknown) {
+      const e = err as { name?: string }
+      if (signal.aborted || e?.name === 'AbortError') return makePartialMessage()
+      throw err
+    }
 
     let fullText = ''
     const toolCallAccumulators: Record<string, { name: string; arguments: string }> = {}
     let finishReason = 'stop'
 
-    for await (const chunk of stream) {
-      const choice = chunk.choices[0]
-      if (!choice) continue
-      finishReason = choice.finish_reason ?? finishReason
+    try {
+      for await (const chunk of stream) {
+        const choice = chunk.choices[0]
+        if (!choice) continue
+        finishReason = choice.finish_reason ?? finishReason
 
-      const delta = choice.delta
-      if (delta.content) {
-        fullText += delta.content
-        sendChunk({ type: 'text_delta', text: delta.content })
-      }
-      if (delta.tool_calls) {
-        for (const tc of delta.tool_calls) {
-          if (!toolCallAccumulators[tc.index]) {
-            toolCallAccumulators[tc.index] = { name: '', arguments: '' }
-            sendChunk({
-              type: 'tool_use_start',
-              toolUseId: tc.id ?? String(tc.index),
-              toolName: tc.function?.name ?? ''
-            })
-          }
-          if (tc.function?.name) toolCallAccumulators[tc.index].name += tc.function.name
-          if (tc.function?.arguments) {
-            toolCallAccumulators[tc.index].arguments += tc.function.arguments
-            sendChunk({ type: 'tool_use_delta', toolInput: tc.function.arguments })
+        const delta = choice.delta
+        if (delta.content) {
+          fullText += delta.content
+          sendChunk({ type: 'text_delta', text: delta.content })
+        }
+        if (delta.tool_calls) {
+          for (const tc of delta.tool_calls) {
+            if (!toolCallAccumulators[tc.index]) {
+              toolCallAccumulators[tc.index] = { name: '', arguments: '' }
+              sendChunk({
+                type: 'tool_use_start',
+                toolUseId: tc.id ?? String(tc.index),
+                toolName: tc.function?.name ?? ''
+              })
+            }
+            if (tc.function?.name) toolCallAccumulators[tc.index].name += tc.function.name
+            if (tc.function?.arguments) {
+              toolCallAccumulators[tc.index].arguments += tc.function.arguments
+              sendChunk({ type: 'tool_use_delta', toolInput: tc.function.arguments })
+            }
           }
         }
       }
+    } catch (err: unknown) {
+      const e = err as { name?: string }
+      if (signal.aborted || e?.name === 'AbortError') {
+        if (fullText) allBlocks.push({ type: 'text', text: fullText })
+        return makePartialMessage()
+      }
+      throw err
     }
 
     if (fullText) allBlocks.push({ type: 'text', text: fullText })
+
+    // Stop tool execution if aborted
+    if (signal.aborted) break
 
     if (finishReason !== 'tool_calls' || Object.keys(toolCallAccumulators).length === 0) break
 
@@ -325,14 +401,7 @@ async function runOpenAILoop(
     }
   }
 
-  return {
-    id: crypto.randomUUID(),
-    role: 'assistant',
-    blocks: allBlocks,
-    model,
-    provider: 'openai',
-    timestamp: Date.now()
-  }
+  return makePartialMessage()
 }
 
 // ── IPC registration ──────────────────────────────────────────────────────────
@@ -343,9 +412,14 @@ export function registerChatHandlers(): void {
     const sender = event.sender
     const systemPrompt = buildSystemPrompt(settings.systemPrompt || '')
 
+    const controller = new AbortController()
+    abortControllers.set(payload.conversationId, controller)
+
     const sendChunk = (data: ChunkData): void => {
-      sender.send('chat:chunk', data)
+      if (!sender.isDestroyed()) sender.send('chat:chunk', data)
     }
+
+    let finalMsg: Message | null = null
 
     try {
       if (payload.provider === 'anthropic') {
@@ -366,12 +440,8 @@ export function registerChatHandlers(): void {
           baseParams.betas = ['thinking-2025-01-15']
         }
 
-        const finalMsg = await runAnthropicLoop(anthropic, baseParams, sendChunk)
-        sendChunk({ type: 'done', finalMessage: finalMsg })
-        return finalMsg
-      }
-
-      if (payload.provider === 'openai' || payload.provider === 'ollama') {
+        finalMsg = await runAnthropicLoop(anthropic, baseParams, sendChunk, controller.signal)
+      } else if (payload.provider === 'openai' || payload.provider === 'ollama') {
         const openai = new OpenAI({
           apiKey: payload.provider === 'openai' ? settings.openaiApiKey : 'ollama',
           baseURL: payload.provider === 'ollama' ? `${settings.ollamaBaseUrl}/v1` : undefined
@@ -382,18 +452,30 @@ export function registerChatHandlers(): void {
           ...messagesToOpenAIFormat(payload.messages)
         ]
 
-        const finalMsg = await runOpenAILoop(openai, payload.model, openaiMessages, sendChunk)
-        finalMsg.provider = payload.provider
-        sendChunk({ type: 'done', finalMessage: finalMsg })
-        return finalMsg
+        finalMsg = await runOpenAILoop(openai, payload.model, openaiMessages, sendChunk, controller.signal)
+        if (finalMsg) finalMsg.provider = payload.provider
       }
     } catch (err) {
-      const error = err instanceof Error ? err.message : String(err)
-      sendChunk({ type: 'error', error })
-      throw err
+      if (!controller.signal.aborted) {
+        const error = err instanceof Error ? err.message : String(err)
+        sendChunk({ type: 'error', error })
+        throw err
+      }
+    } finally {
+      abortControllers.delete(payload.conversationId)
     }
 
-    return null
+    if (controller.signal.aborted) {
+      sendChunk({ type: 'aborted', finalMessage: finalMsg ?? undefined })
+    } else {
+      sendChunk({ type: 'done', finalMessage: finalMsg ?? undefined })
+    }
+
+    return finalMsg
+  })
+
+  ipcMain.on('chat:abort', (_, conversationId: string) => {
+    abortControllers.get(conversationId)?.abort()
   })
 
   ipcMain.handle(

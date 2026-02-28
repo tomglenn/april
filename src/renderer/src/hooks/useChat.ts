@@ -1,13 +1,14 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useConversationsStore } from '../stores/conversations'
 import { useSettingsStore } from '../stores/settings'
-import type { Message, ContentBlock } from '../types'
+import type { Message, ContentBlock, ImageAttachment } from '../types'
 import type { ChunkData } from '../../../main/ipc/chat'
 
 interface UseChatReturn {
   isStreaming: boolean
   error: string | null
-  sendMessage: (text: string, model: string, provider: string) => Promise<void>
+  sendMessage: (text: string, model: string, provider: string, images?: ImageAttachment[]) => Promise<void>
+  stopStreaming: () => void
 }
 
 export function useChat(conversationId: string | null): UseChatReturn {
@@ -22,19 +23,35 @@ export function useChat(conversationId: string | null): UseChatReturn {
     activeConvIdRef.current = conversationId
   }, [conversationId])
 
+  const stopStreaming = useCallback(() => {
+    if (activeConvIdRef.current && isStreaming) {
+      window.api.abortMessage(activeConvIdRef.current)
+    }
+  }, [isStreaming])
+
   const sendMessage = useCallback(
-    async (text: string, model: string, provider: string) => {
+    async (text: string, model: string, provider: string, images?: ImageAttachment[]) => {
       const convId = activeConvIdRef.current
       if (!convId || isStreaming) return
 
       setError(null)
       setIsStreaming(true)
 
+      // Build image content blocks (data URL → pure base64)
+      const imageBlocks: ContentBlock[] = (images ?? []).map((img) => ({
+        type: 'image' as const,
+        mediaType: img.mediaType,
+        data: img.dataUrl.split(',')[1]
+      }))
+
       // Add user message
       const userMsg: Message = {
         id: crypto.randomUUID(),
         role: 'user',
-        blocks: [{ type: 'text', text }],
+        blocks: [
+          ...imageBlocks,
+          ...(text.trim() ? [{ type: 'text' as const, text }] : [])
+        ],
         timestamp: Date.now()
       }
       addMessage(convId, userMsg)
@@ -154,6 +171,15 @@ export function useChat(conversationId: string | null): UseChatReturn {
           if (updatedConv) {
             window.api.updateConversation(updatedConv)
           }
+        } else if (data.type === 'aborted') {
+          // Preserve partial response — same as done but no error
+          if (data.finalMessage) {
+            updateLastMessage(convId, () => ({ ...data.finalMessage!, id: assistantMsg.id }))
+            const updatedConv = useConversationsStore
+              .getState()
+              .conversations.find((c) => c.id === convId)
+            if (updatedConv) window.api.updateConversation(updatedConv)
+          }
         } else if (data.type === 'error') {
           setError(data.error || 'Unknown error')
           // Remove placeholder assistant message on error
@@ -205,5 +231,5 @@ export function useChat(conversationId: string | null): UseChatReturn {
     [conversationId, isStreaming, conversations, addMessage, updateLastMessage, renameConv]
   )
 
-  return { isStreaming, error, sendMessage }
+  return { isStreaming, error, sendMessage, stopStreaming }
 }
