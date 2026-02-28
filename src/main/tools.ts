@@ -1,9 +1,13 @@
+import OpenAI from 'openai'
+import { store } from './store'
+import type { Settings } from '../renderer/src/types'
+
 export interface ToolDefinition {
   name: string
   description: string
   input_schema: {
     type: 'object'
-    properties: Record<string, { type: string; description: string }>
+    properties: Record<string, { type: string; description: string; enum?: string[] }>
     required: string[]
   }
 }
@@ -46,6 +50,38 @@ export const TOOLS: ToolDefinition[] = [
       },
       required: ['location']
     }
+  },
+  {
+    name: 'generate_image',
+    description:
+      "Generate an image using GPT-Image-1, OpenAI's most capable image model (the same one powering ChatGPT). Supports transparent backgrounds, high-quality rendering, and follows detailed prompts closely. Use this when the user asks to create, draw, generate, or visualise an image.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        prompt: {
+          type: 'string',
+          description: 'A detailed description of the image to generate'
+        },
+        size: {
+          type: 'string',
+          enum: ['1024x1024', '1536x1024', '1024x1536'],
+          description:
+            'Image dimensions: 1536x1024 for landscape, 1024x1536 for portrait, 1024x1024 for square (default)'
+        },
+        quality: {
+          type: 'string',
+          enum: ['auto', 'high', 'medium', 'low'],
+          description:
+            'Rendering quality. Use "high" for detailed or hero images; "low" for quick previews. Defaults to "auto".'
+        },
+        transparent: {
+          type: 'boolean',
+          description:
+            'Set true to produce a PNG with a transparent background — ideal for logos, stickers, icons, or assets that will be composited onto other content.'
+        }
+      },
+      required: ['prompt']
+    }
   }
 ]
 
@@ -81,67 +117,59 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutM
 // ── Tools ────────────────────────────────────────────────────────────────────
 
 async function webSearch(query: string): Promise<string> {
-  const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`
-  const res = await fetchWithTimeout(url, {
-    headers: { 'User-Agent': 'AprilAgent/1.0 (personal AI assistant)' }
+  // Use DDG's HTML endpoint — returns real ranked results unlike the instant-answer JSON API
+  const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&kl=us-en`
+  const res = await fetchWithTimeout(searchUrl, {
+    headers: {
+      'User-Agent':
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9'
+    }
   })
 
   if (!res.ok) throw new Error(`Search request failed: ${res.status}`)
 
-  const data = (await res.json()) as {
-    Abstract: string
-    AbstractURL: string
-    AbstractSource: string
-    Answer: string
-    RelatedTopics: Array<{
-      Text?: string
-      FirstURL?: string
-      Topics?: Array<{ Text?: string; FirstURL?: string }>
-    }>
-    Results: Array<{ Text?: string; FirstURL?: string }>
+  const html = await res.text()
+
+  // Extract result title links — href contains the real URL via the `uddg` query param
+  const titleRe = /class="result__a"[^>]+href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g
+  const snippetRe = /class="result__snippet"[^>]*>([\s\S]*?)<\/(?:a|div)>/g
+
+  const links: Array<{ href: string; title: string }> = []
+  const snippets: string[] = []
+
+  let m: RegExpExecArray | null
+  while ((m = titleRe.exec(html)) !== null) {
+    const title = stripHtml(m[2]).trim()
+    if (title) links.push({ href: m[1], title })
+  }
+  while ((m = snippetRe.exec(html)) !== null) {
+    const s = stripHtml(m[1]).trim()
+    if (s) snippets.push(s)
   }
 
-  const parts: string[] = []
-
-  if (data.Answer) {
-    parts.push(`Answer: ${data.Answer}`, '')
-  }
-
-  if (data.Abstract) {
-    parts.push(`Summary (${data.AbstractSource}): ${data.Abstract}`)
-    if (data.AbstractURL) parts.push(`Source: ${data.AbstractURL}`)
-    parts.push('')
-  }
-
-  const results: string[] = []
-  for (const r of data.Results ?? []) {
-    if (r.Text && r.FirstURL) results.push(`• ${r.Text}\n  ${r.FirstURL}`)
-  }
-  for (const t of data.RelatedTopics ?? []) {
-    if (results.length >= 8) break
-    if (t.Text && t.FirstURL) {
-      results.push(`• ${t.Text}\n  ${t.FirstURL}`)
-    } else if (t.Topics) {
-      for (const st of t.Topics) {
-        if (results.length >= 8) break
-        if (st.Text && st.FirstURL) results.push(`• ${st.Text}\n  ${st.FirstURL}`)
-      }
+  const results: Array<{ title: string; url: string; snippet: string }> = []
+  for (let i = 0; i < links.length && results.length < 8; i++) {
+    const { href, title } = links[i]
+    // Decode DDG redirect — real URL is in the `uddg` param
+    let url = href
+    const uddg = href.match(/[?&]uddg=([^&]+)/)
+    if (uddg) {
+      try { url = decodeURIComponent(uddg[1]) } catch { /* keep raw */ }
     }
+    // Skip internal DDG links that slipped through
+    if (!url || url.startsWith('//') || url.includes('duckduckgo.com')) continue
+    results.push({ title, url, snippet: snippets[i] ?? '' })
   }
 
-  if (results.length > 0) {
-    parts.push('Results:')
-    parts.push(...results)
+  if (results.length === 0) {
+    return `No results found for "${query}". Try browse_url with a specific URL.`
   }
 
-  if (parts.length === 0) {
-    return (
-      `No instant results found for "${query}". ` +
-      `Try browse_url with a specific site, e.g. browse_url("https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(query)}")`
-    )
-  }
-
-  return parts.join('\n')
+  return results
+    .map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`)
+    .join('\n\n')
 }
 
 async function browseUrl(url: string): Promise<string> {
@@ -149,7 +177,13 @@ async function browseUrl(url: string): Promise<string> {
     headers: {
       'User-Agent':
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Cache-Control': 'no-cache',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'none',
+      'Upgrade-Insecure-Requests': '1'
     }
   })
 
@@ -273,6 +307,40 @@ async function getWeather(location: string): Promise<string> {
   return lines.join('\n')
 }
 
+// ── Image generation ──────────────────────────────────────────────────────────
+
+async function generateImage(input: unknown): Promise<string> {
+  const {
+    prompt,
+    size = '1024x1024',
+    quality = 'auto',
+    transparent = false
+  } = input as { prompt: string; size?: string; quality?: string; transparent?: boolean }
+
+  const settings = store.get('settings') as Settings
+  if (!settings.openaiApiKey) {
+    return 'Tool error: An OpenAI API key is required for image generation. Please add yours in Settings.'
+  }
+
+  const openai = new OpenAI({ apiKey: settings.openaiApiKey })
+
+  // gpt-image-1 uses 'background' for transparency and extended quality/size options.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const response = await (openai.images.generate as (p: any) => Promise<{ data?: Array<{ b64_json?: string }> }>)({
+    model: 'gpt-image-1',
+    prompt,
+    n: 1,
+    size,
+    quality,
+    background: transparent ? 'transparent' : 'auto',
+    output_format: 'png'
+  })
+
+  const b64 = response.data?.[0]?.b64_json
+  if (!b64) return 'Tool error: No image data returned.'
+  return `data:image/png;base64,${b64}`
+}
+
 // ── Executor ─────────────────────────────────────────────────────────────────
 
 export async function executeTool(name: string, input: unknown): Promise<string> {
@@ -285,6 +353,8 @@ export async function executeTool(name: string, input: unknown): Promise<string>
         return await browseUrl(inp.url)
       case 'get_weather':
         return await getWeather(inp.location)
+      case 'generate_image':
+        return generateImage(input)
       default:
         return `Unknown tool: ${name}`
     }

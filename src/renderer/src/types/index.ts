@@ -16,6 +16,7 @@ export interface Message {
   model?: string
   provider?: Provider
   timestamp: number
+  error?: string  // set on user messages when the API response failed
 }
 
 export type ContentBlock =

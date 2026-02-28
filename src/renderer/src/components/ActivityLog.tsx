@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronRight, Search, Globe, CloudSun, Wrench, Brain } from 'lucide-react'
+import { ChevronRight, Search, Globe, CloudSun, Wrench, Brain, ImageIcon } from 'lucide-react'
 import type { ContentBlock } from '../types'
 
 interface Props {
@@ -14,6 +14,7 @@ function toolIcon(name: string): JSX.Element {
     case 'web_search': return <Search size={11} />
     case 'browse_url': return <Globe size={11} />
     case 'get_weather': return <CloudSun size={11} />
+    case 'generate_image': return <ImageIcon size={11} />
     default: return <Wrench size={11} />
   }
 }
@@ -44,6 +45,13 @@ function currentStatusLabel(blocks: ContentBlock[]): string {
         }
         case 'get_weather':
           return inp.location ? `Checking weather in ${inp.location}...` : 'Checking weather...'
+        case 'generate_image': {
+          const gi = b.input as { prompt?: string; quality?: string; transparent?: boolean }
+          const label = gi.transparent ? 'Generating (transparent)' : 'Generating'
+          return gi.prompt
+            ? `${label} "${gi.prompt.length > 30 ? gi.prompt.slice(0, 30) + '…' : gi.prompt}"`
+            : 'Generating image...'
+        }
         default:
           return `Running ${b.name}...`
       }
@@ -77,6 +85,9 @@ function summaryLabel(blocks: ContentBlock[]): string {
         break
       case 'get_weather':
         parts.push('checked weather')
+        break
+      case 'generate_image':
+        parts.push(n === 1 ? 'generated image' : `generated ${n} images`)
         break
       default:
         parts.push(n === 1 ? name : `${name} ${n}×`)

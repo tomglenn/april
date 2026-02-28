@@ -1,13 +1,15 @@
 import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import rehypeHighlight from 'rehype-highlight'
-import { Copy, Check } from 'lucide-react'
+import remarkGfm from 'remark-gfm'
+import { Copy, Check, Download, X, AlertCircle, RotateCcw } from 'lucide-react'
 import { ActivityLog } from './ActivityLog'
 import type { Message as MessageType, ContentBlock } from '../types'
 
 interface Props {
   message: MessageType
   isStreaming?: boolean
+  onRetry?: () => void
 }
 
 function CopyButton({ text }: { text: string }): JSX.Element {
@@ -31,12 +33,60 @@ function CopyButton({ text }: { text: string }): JSX.Element {
   )
 }
 
+function downloadImage(src: string): void {
+  const link = document.createElement('a')
+  link.href = src
+  link.download = `image-${Date.now()}.png`
+  link.click()
+}
+
 function TextContent({ text }: { text: string }): JSX.Element {
   return (
     <div className="prose text-sm" style={{ color: 'var(--text)' }}>
       <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeHighlight]}
         components={{
+          // Suppress markdown image syntax — generated images are rendered as ContentBlocks
+          img: () => null,
+          // Open all links in the system browser, never in the app window
+          a: ({ href, children, ...props }) => (
+            <a {...props} href={href} target="_blank" rel="noreferrer">
+              {children}
+            </a>
+          ),
+          // Suppress full-width horizontal rules
+          hr: () => null,
+          // Tables
+          table: ({ children }) => (
+            <div className="overflow-x-auto my-2">
+              <table
+                className="text-xs border-collapse w-full"
+                style={{ borderColor: 'var(--border)' }}
+              >
+                {children}
+              </table>
+            </div>
+          ),
+          thead: ({ children }) => (
+            <thead style={{ background: 'var(--surface-alt)' }}>{children}</thead>
+          ),
+          th: ({ children }) => (
+            <th
+              className="px-3 py-1.5 text-left font-medium border"
+              style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}
+            >
+              {children}
+            </th>
+          ),
+          td: ({ children }) => (
+            <td
+              className="px-3 py-1.5 border"
+              style={{ borderColor: 'var(--border)' }}
+            >
+              {children}
+            </td>
+          ),
           pre: ({ children, ...props }) => (
             <div className="relative group/code">
               <pre
@@ -78,9 +128,10 @@ function TextContent({ text }: { text: string }): JSX.Element {
   )
 }
 
-export function Message({ message, isStreaming = false }: Props): JSX.Element {
+export function Message({ message, isStreaming = false, onRetry }: Props): JSX.Element {
   const isUser = message.role === 'user'
   const label = isUser ? 'You' : 'April'
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
 
   // Split into renderable items: text nodes, image nodes, + one activity slot
   // The activity slot appears where the first non-text/non-image block is
@@ -134,14 +185,25 @@ export function Message({ message, isStreaming = false }: Props): JSX.Element {
               return <TextContent key={i} text={item.text} />
             }
             if (item.kind === 'image') {
+              const src = `data:${item.block.mediaType};base64,${item.block.data}`
               return (
-                <img
-                  key={i}
-                  src={`data:${item.block.mediaType};base64,${item.block.data}`}
-                  alt=""
-                  className="max-h-48 rounded-md my-1"
-                  style={{ border: '1px solid var(--border)' }}
-                />
+                <div key={i} className="relative group/img inline-block my-1">
+                  <img
+                    src={src}
+                    alt="Generated image"
+                    className="max-h-64 rounded-md cursor-zoom-in block"
+                    style={{ border: '1px solid var(--border)' }}
+                    onClick={() => setLightboxSrc(src)}
+                  />
+                  <button
+                    onClick={() => downloadImage(src)}
+                    className="absolute bottom-2 right-2 p-1.5 rounded-md opacity-0 group-hover/img:opacity-100 transition-opacity"
+                    style={{ background: 'rgba(0,0,0,0.65)', color: 'white' }}
+                    title="Download"
+                  >
+                    <Download size={13} />
+                  </button>
+                </div>
               )
             }
             return (
@@ -153,8 +215,33 @@ export function Message({ message, isStreaming = false }: Props): JSX.Element {
             )
           })}
 
+          {/* Error state on failed user messages */}
+          {message.error && (
+            <div
+              className="flex items-start gap-2 mt-2 px-3 py-2 rounded-lg text-xs"
+              style={{
+                background: 'rgba(239,68,68,0.08)',
+                border: '1px solid rgba(239,68,68,0.2)',
+                color: '#f87171'
+              }}
+            >
+              <AlertCircle size={13} className="shrink-0 mt-0.5" />
+              <span className="flex-1">{message.error}</span>
+              {onRetry && (
+                <button
+                  onClick={onRetry}
+                  className="flex items-center gap-1 shrink-0 hover:opacity-80 transition-opacity"
+                  title="Retry"
+                >
+                  <RotateCcw size={11} />
+                  <span>Retry</span>
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Empty state while streaming first response */}
-          {message.blocks.length === 0 && (
+          {message.blocks.length === 0 && isStreaming && (
             <div className="flex items-center gap-2 py-1" style={{ color: 'var(--muted)' }}>
               <div
                 className="w-1.5 h-1.5 rounded-full animate-pulse"
@@ -165,6 +252,40 @@ export function Message({ message, isStreaming = false }: Props): JSX.Element {
           )}
         </div>
       </div>
+
+      {/* Lightbox */}
+      {lightboxSrc && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: 'rgba(0,0,0,0.85)' }}
+          onClick={() => setLightboxSrc(null)}
+        >
+          <img
+            src={lightboxSrc}
+            alt="Full resolution"
+            className="max-w-[90vw] max-h-[90vh] rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <div className="absolute top-4 right-4 flex gap-2">
+            <button
+              onClick={() => downloadImage(lightboxSrc)}
+              className="p-2 rounded-full"
+              style={{ background: 'rgba(0,0,0,0.6)', color: 'white' }}
+              title="Download full resolution"
+            >
+              <Download size={16} />
+            </button>
+            <button
+              onClick={() => setLightboxSrc(null)}
+              className="p-2 rounded-full"
+              style={{ background: 'rgba(0,0,0,0.6)', color: 'white' }}
+              title="Close"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

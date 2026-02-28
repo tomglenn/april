@@ -5,7 +5,8 @@
       "WebFetch(domain:electron-vite.org)",
       "WebSearch",
       "Bash(npm create:*)",
-      "Bash(export:*)"
+      "Bash(export:*)",
+      "Bash(npm run:*)"
     ]
   }
 }

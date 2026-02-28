@@ -6,15 +6,37 @@ import type { ChunkData } from '../../../main/ipc/chat'
 
 interface UseChatReturn {
   isStreaming: boolean
-  error: string | null
   sendMessage: (text: string, model: string, provider: string, images?: ImageAttachment[]) => Promise<void>
   stopStreaming: () => void
+  retryMessage: (msg: Message) => Promise<void>
+}
+
+function formatApiError(raw: string): string {
+  const jsonMatch = raw.match(/\{[\s\S]*\}/)
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[0])
+      const msg = (parsed?.error?.message ?? parsed?.message) as string | undefined
+      if (msg) {
+        if (/api.?key|authentication|invalid x-api/i.test(msg)) return 'Invalid API key — check Settings.'
+        if (/rate.?limit/i.test(msg)) return 'Rate limit reached — try again in a moment.'
+        if (/quota|billing|insufficient_quota/i.test(msg)) return 'API quota exceeded — check your billing.'
+        if (/context.?length|too.?long|maximum.?token/i.test(msg)) return 'Message is too long for this model.'
+        return msg
+      }
+    } catch { /* fall through */ }
+  }
+  const status = raw.match(/\b([45]\d\d)\b/)?.[1]
+  if (status === '401') return 'Invalid API key — check Settings.'
+  if (status === '403') return 'Access denied — check your API key permissions.'
+  if (status === '429') return 'Rate limit reached — try again in a moment.'
+  if (status === '500' || status === '502' || status === '503') return 'Server error — try again shortly.'
+  return 'Something went wrong — please try again.'
 }
 
 export function useChat(conversationId: string | null): UseChatReturn {
   const [isStreaming, setIsStreaming] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const { conversations, addMessage, updateLastMessage, renameConv } = useConversationsStore()
+  const { conversations, addMessage, updateLastMessage, updateMessageById, removeMessageById, renameConv } = useConversationsStore()
   useSettingsStore()
   const streamingMsgRef = useRef<Message | null>(null)
   const activeConvIdRef = useRef<string | null>(conversationId)
@@ -34,7 +56,6 @@ export function useChat(conversationId: string | null): UseChatReturn {
       const convId = activeConvIdRef.current
       if (!convId || isStreaming) return
 
-      setError(null)
       setIsStreaming(true)
 
       // Build image content blocks (data URL → pure base64)
@@ -71,6 +92,20 @@ export function useChat(conversationId: string | null): UseChatReturn {
       }
       addMessage(convId, assistantMsg)
       streamingMsgRef.current = assistantMsg
+
+      // Track whether error was already handled by the error chunk
+      // (main process sends an error chunk AND re-throws, so both paths fire)
+      let errorHandled = false
+
+      const markError = (raw: string): void => {
+        if (errorHandled) return
+        errorHandled = true
+        removeMessageById(convId, assistantMsg.id)
+        updateMessageById(convId, userMsg.id, (m) => ({ ...m, error: formatApiError(raw) }))
+        // Persist so the empty assistant placeholder isn't on disk at next startup
+        const updatedConv = useConversationsStore.getState().conversations.find((c) => c.id === convId)
+        if (updatedConv) window.api.updateConversation(updatedConv)
+      }
 
       // Accumulate streaming state
       let currentBlocks: ContentBlock[] = []
@@ -139,6 +174,16 @@ export function useChat(conversationId: string | null): UseChatReturn {
             }
           ]
           updateLastMessage(convId, (msg) => ({ ...msg, blocks: currentBlocks }))
+        } else if (data.type === 'image_block' && data.imageData) {
+          currentBlocks = [
+            ...currentBlocks,
+            {
+              type: 'image' as const,
+              mediaType: data.imageMediaType || 'image/png',
+              data: data.imageData
+            }
+          ]
+          updateLastMessage(convId, (msg) => ({ ...msg, blocks: currentBlocks }))
         } else if (data.type === 'tool_use_delta' && data.toolInput) {
           currentToolInput += data.toolInput
           if (currentToolIdx >= 0) {
@@ -181,12 +226,7 @@ export function useChat(conversationId: string | null): UseChatReturn {
             if (updatedConv) window.api.updateConversation(updatedConv)
           }
         } else if (data.type === 'error') {
-          setError(data.error || 'Unknown error')
-          // Remove placeholder assistant message on error
-          updateLastMessage(convId, (msg) => ({
-            ...msg,
-            blocks: [{ type: 'text', text: `Error: ${data.error}` }]
-          }))
+          markError(data.error || 'Unknown error')
         }
       }
 
@@ -201,8 +241,7 @@ export function useChat(conversationId: string | null): UseChatReturn {
           enableThinking: provider === 'anthropic' && model.includes('claude-3-7')
         })
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        setError(msg)
+        markError(err instanceof Error ? err.message : String(err))
       } finally {
         window.api.offChunk(handleChunk)
         setIsStreaming(false)
@@ -228,8 +267,31 @@ export function useChat(conversationId: string | null): UseChatReturn {
         }
       }
     },
-    [conversationId, isStreaming, conversations, addMessage, updateLastMessage, renameConv]
+    [conversationId, isStreaming, conversations, addMessage, updateLastMessage, updateMessageById, removeMessageById, renameConv]
   )
 
-  return { isStreaming, error, sendMessage, stopStreaming }
+  const retryMessage = useCallback(
+    async (msg: Message) => {
+      const convId = activeConvIdRef.current
+      if (!convId || isStreaming) return
+      // Remove the failed user message — sendMessage will re-add it cleanly
+      removeMessageById(convId, msg.id)
+      const text = msg.blocks
+        .filter((b) => b.type === 'text')
+        .map((b) => (b as { type: 'text'; text: string }).text)
+        .join('\n')
+      const images: ImageAttachment[] = msg.blocks
+        .filter((b) => b.type === 'image')
+        .map((b) => {
+          const img = b as { type: 'image'; mediaType: string; data: string }
+          return { id: crypto.randomUUID(), dataUrl: `data:${img.mediaType};base64,${img.data}`, mediaType: img.mediaType }
+        })
+      const { settings } = useSettingsStore.getState()
+      if (!settings) return
+      await sendMessage(text, settings.defaultModel, settings.defaultProvider, images.length > 0 ? images : undefined)
+    },
+    [isStreaming, removeMessageById, sendMessage]
+  )
+
+  return { isStreaming, sendMessage, stopStreaming, retryMessage }
 }

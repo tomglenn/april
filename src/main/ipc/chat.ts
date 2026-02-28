@@ -1,4 +1,5 @@
 import { ipcMain } from 'electron'
+import { setMaxListeners } from 'events'
 import Anthropic from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
 import { store } from '../store'
@@ -20,6 +21,7 @@ export interface ChunkData {
     | 'tool_use_start'
     | 'tool_use_delta'
     | 'tool_result'
+    | 'image_block'
     | 'turn_start'
     | 'done'
     | 'aborted'
@@ -32,6 +34,19 @@ export interface ChunkData {
   content?: string
   error?: string
   finalMessage?: Message
+  imageData?: string
+  imageMediaType?: string
+}
+
+// ── Image result parser ────────────────────────────────────────────────────────
+
+function parseImageResult(result: string): { mediaType: string; data: string } | null {
+  if (!result.startsWith('data:image/')) return null
+  const commaIdx = result.indexOf(',')
+  if (commaIdx === -1) return null
+  const mediaType = result.slice(5, commaIdx).split(';')[0]
+  const data = result.slice(commaIdx + 1)
+  return { mediaType, data }
 }
 
 // ── Abort registry ────────────────────────────────────────────────────────────
@@ -266,12 +281,20 @@ async function runAnthropicLoop(
         try { return JSON.parse(tu.input || '{}') } catch { return {} }
       })()
       const result = await executeTool(tu.name, input)
+      const img = parseImageResult(result)
 
-      // Add tool_result block to allBlocks for the UI
-      allBlocks.push({ type: 'tool_result', tool_use_id: tu.id, content: result })
-      sendChunk({ type: 'tool_result', toolUseId: tu.id, content: result })
-
-      toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: result })
+      if (img) {
+        allBlocks.push({ type: 'image', mediaType: img.mediaType, data: img.data })
+        sendChunk({ type: 'image_block', imageData: img.data, imageMediaType: img.mediaType })
+        const successText = 'Image generated successfully.'
+        allBlocks.push({ type: 'tool_result', tool_use_id: tu.id, content: successText })
+        sendChunk({ type: 'tool_result', toolUseId: tu.id, content: successText })
+        toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: successText })
+      } else {
+        allBlocks.push({ type: 'tool_result', tool_use_id: tu.id, content: result })
+        sendChunk({ type: 'tool_result', toolUseId: tu.id, content: result })
+        toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: result })
+      }
     }
 
     // Feed results back as a user turn and loop
@@ -387,17 +410,17 @@ async function runOpenAILoop(
         try { return JSON.parse(tc.function.arguments) } catch { return {} }
       })()
       const result = await executeTool(tc.function.name, input)
+      const img = parseImageResult(result)
+      const toolContent = img ? 'Image generated successfully.' : result
 
-      allBlocks.push({
-        type: 'tool_use',
-        id: tc.id,
-        name: tc.function.name,
-        input
-      })
-      allBlocks.push({ type: 'tool_result', tool_use_id: tc.id, content: result })
-      sendChunk({ type: 'tool_result', toolUseId: tc.id, content: result })
-
-      messages.push({ role: 'tool', tool_call_id: tc.id, content: result })
+      allBlocks.push({ type: 'tool_use', id: tc.id, name: tc.function.name, input })
+      if (img) {
+        allBlocks.push({ type: 'image', mediaType: img.mediaType, data: img.data })
+        sendChunk({ type: 'image_block', imageData: img.data, imageMediaType: img.mediaType })
+      }
+      allBlocks.push({ type: 'tool_result', tool_use_id: tc.id, content: toolContent })
+      sendChunk({ type: 'tool_result', toolUseId: tc.id, content: toolContent })
+      messages.push({ role: 'tool', tool_call_id: tc.id, content: toolContent })
     }
   }
 
@@ -413,6 +436,9 @@ export function registerChatHandlers(): void {
     const systemPrompt = buildSystemPrompt(settings.systemPrompt || '')
 
     const controller = new AbortController()
+    // Each loop iteration (tool call) attaches a listener to the signal via the SDK stream;
+    // raise the limit so long tool chains don't trigger the MaxListeners warning.
+    setMaxListeners(0, controller.signal)
     abortControllers.set(payload.conversationId, controller)
 
     const sendChunk = (data: ChunkData): void => {

@@ -14,6 +14,8 @@ interface ConversationsState {
   removeConversation: (id: string) => void
   addMessage: (conversationId: string, message: Message) => void
   updateLastMessage: (conversationId: string, updater: (msg: Message) => Message) => void
+  updateMessageById: (conversationId: string, messageId: string, updater: (msg: Message) => Message) => void
+  removeMessageById: (conversationId: string, messageId: string) => void
 
   // Async actions
   load: () => Promise<void>
@@ -28,7 +30,11 @@ export const useConversationsStore = create<ConversationsState>((set, get) => ({
   loading: false,
 
   setConversations: (conversations) => set({ conversations }),
-  setActiveId: (activeId) => set({ activeId }),
+  setActiveId: (activeId) => {
+    set({ activeId })
+    if (activeId) localStorage.setItem('lastActiveConversationId', activeId)
+    else localStorage.removeItem('lastActiveConversationId')
+  },
 
   addConversation: (conv) =>
     set((state) => ({ conversations: [conv, ...state.conversations] })),
@@ -69,11 +75,39 @@ export const useConversationsStore = create<ConversationsState>((set, get) => ({
     }))
   },
 
+  updateMessageById: (conversationId, messageId, updater) => {
+    set((state) => ({
+      conversations: state.conversations.map((c) => {
+        if (c.id !== conversationId) return c
+        return { ...c, messages: c.messages.map((m) => (m.id === messageId ? updater(m) : m)) }
+      })
+    }))
+  },
+
+  removeMessageById: (conversationId, messageId) => {
+    set((state) => ({
+      conversations: state.conversations.map((c) => {
+        if (c.id !== conversationId) return c
+        return { ...c, messages: c.messages.filter((m) => m.id !== messageId) }
+      })
+    }))
+  },
+
   load: async () => {
     set({ loading: true })
     try {
       const convs = await window.api.listConversations()
-      set({ conversations: convs, loading: false })
+      // Strip empty assistant placeholders orphaned by failed/interrupted requests
+      const cleaned = convs.map((c) => ({
+        ...c,
+        messages: c.messages.filter((m) => !(m.role === 'assistant' && m.blocks.length === 0))
+      }))
+      // Restore last active conversation if it still exists
+      const lastActiveId = localStorage.getItem('lastActiveConversationId')
+      const restoredActiveId = lastActiveId && cleaned.find((c) => c.id === lastActiveId)
+        ? lastActiveId
+        : null
+      set({ conversations: cleaned, activeId: restoredActiveId, loading: false })
     } catch {
       set({ loading: false })
     }

@@ -1,9 +1,12 @@
 import Store from 'electron-store'
+import { app } from 'electron'
+import { join } from 'path'
 import type { Conversation, Settings } from '../renderer/src/types'
 
 export interface AppStore {
   conversations: Conversation[]
   settings: Settings
+  windowBounds?: { x: number; y: number; width: number; height: number }
 }
 
 export const DEFAULT_SYSTEM_PROMPT = `You are April, a helpful, friendly, and capable personal AI agent.
@@ -36,4 +39,9 @@ const defaults: AppStore = {
   }
 }
 
-export const store = new Store<AppStore>({ defaults })
+// Pin the store to a fixed path so it never moves if app.setName() or
+// productName changes the value returned by app.getPath('userData').
+export const store = new Store<AppStore>({
+  defaults,
+  cwd: join(app.getPath('appData'), 'april-agent')
+})

@@ -7,7 +7,7 @@ import { useChat } from '../hooks/useChat'
 
 export function ConversationView(): JSX.Element {
   const { activeId, conversations } = useConversationsStore()
-  const { isStreaming, error, sendMessage, stopStreaming } = useChat(activeId)
+  const { isStreaming, sendMessage, stopStreaming, retryMessage } = useChat(activeId)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const activeConv = conversations.find((c) => c.id === activeId)
@@ -48,21 +48,12 @@ export function ConversationView(): JSX.Element {
                 key={msg.id}
                 message={msg}
                 isStreaming={isStreaming && i === activeConv.messages.length - 1}
+                onRetry={msg.role === 'user' && msg.error ? () => retryMessage(msg) : undefined}
               />
             ))}
           </>
         )}
       </div>
-
-      {/* Error bar */}
-      {error && (
-        <div
-          className="px-4 py-2 text-xs"
-          style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171', borderTop: '1px solid rgba(239,68,68,0.2)' }}
-        >
-          Error: {error}
-        </div>
-      )}
 
       {/* Input */}
       <InputBar onSend={sendMessage} onStop={stopStreaming} isStreaming={isStreaming} />
