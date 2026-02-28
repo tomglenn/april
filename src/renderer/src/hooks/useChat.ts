@@ -4,15 +4,16 @@ import { useSettingsStore } from '../stores/settings'
 import type { Message, ContentBlock, ImageAttachment } from '../types'
 import type { ChunkData } from '../../../main/ipc/chat'
 
-export interface StreamingState {
-  convId: string
+export interface StreamingEntry {
   msgId: string
   blocks: ContentBlock[]
 }
 
+export type StreamingMap = Record<string, StreamingEntry>
+
 interface UseChatReturn {
   isStreaming: boolean
-  streamingState: StreamingState | null
+  streamingState: StreamingMap
   sendMessage: (text: string, model: string, provider: string, images?: ImageAttachment[]) => Promise<void>
   stopStreaming: () => void
   retryMessage: (msg: Message) => Promise<void>
@@ -42,30 +43,28 @@ function formatApiError(raw: string): string {
 }
 
 export function useChat(conversationId: string | null): UseChatReturn {
-  const [isStreaming, setIsStreaming] = useState(false)
-  const [streamingState, setStreamingState] = useState<StreamingState | null>(null)
+  const [streamingState, setStreamingState] = useState<StreamingMap>({})
   const { addMessage, updateMessageById, removeMessageById, renameConv } = useConversationsStore()
   useSettingsStore()
   const activeConvIdRef = useRef<string | null>(conversationId)
-  const streamingConvIdRef = useRef<string | null>(null)
+  const streamingConvIdsRef = useRef<Set<string>>(new Set())
+  const isStreaming = Object.keys(streamingState).length > 0
 
   useEffect(() => {
     activeConvIdRef.current = conversationId
   }, [conversationId])
 
   const stopStreaming = useCallback(() => {
-    const target = streamingConvIdRef.current ?? activeConvIdRef.current
-    if (target && isStreaming) {
+    const target = activeConvIdRef.current
+    if (target && streamingConvIdsRef.current.has(target)) {
       window.api.abortMessage(target)
     }
-  }, [isStreaming])
+  }, [])
 
   const sendMessage = useCallback(
     async (text: string, model: string, provider: string, images?: ImageAttachment[]) => {
       const convId = activeConvIdRef.current
-      if (!convId || (isStreaming && streamingConvIdRef.current === convId)) return
-
-      setIsStreaming(true)
+      if (!convId || streamingConvIdsRef.current.has(convId)) return
 
       // Build image content blocks (data URL → pure base64)
       const imageBlocks: ContentBlock[] = (images ?? []).map((img) => ({
@@ -109,7 +108,7 @@ export function useChat(conversationId: string | null): UseChatReturn {
       const markError = (raw: string): void => {
         if (errorHandled) return
         errorHandled = true
-        setStreamingState(null)
+        setStreamingState((prev) => { const { [convId]: _, ...rest } = prev; return rest })
         removeMessageById(convId, assistantMsg.id)
         updateMessageById(convId, userMsg.id, (m) => ({ ...m, error: formatApiError(raw) }))
         // Persist so the empty assistant placeholder isn't on disk at next startup
@@ -126,7 +125,7 @@ export function useChat(conversationId: string | null): UseChatReturn {
       let currentToolInput = ''
 
       const pushBlocks = (): void => {
-        setStreamingState({ convId, msgId, blocks: currentBlocks })
+        setStreamingState((prev) => ({ ...prev, [convId]: { msgId, blocks: currentBlocks } }))
       }
 
       const handleChunk = (data: ChunkData): void => {
@@ -224,15 +223,15 @@ export function useChat(conversationId: string | null): UseChatReturn {
           }
         } else if (data.type === 'done' || data.type === 'aborted') {
           // Store commit is handled by the sendMessage return value in finally.
-          // Just clear the streaming overlay so the store-committed message renders.
-          setStreamingState(null)
+          // Just clear this conversation's streaming overlay.
+          setStreamingState((prev) => { const { [convId]: _, ...rest } = prev; return rest })
         } else if (data.type === 'error') {
           markError(data.error || 'Unknown error')
         }
       }
 
-      streamingConvIdRef.current = convId
-      setStreamingState({ convId, msgId, blocks: [] })
+      streamingConvIdsRef.current.add(convId)
+      setStreamingState((prev) => ({ ...prev, [convId]: { msgId, blocks: [] } }))
       window.api.onChunk(handleChunk)
 
       let finalMsg: Message | null = null
@@ -258,9 +257,8 @@ export function useChat(conversationId: string | null): UseChatReturn {
           if (updatedConv) window.api.updateConversation(updatedConv)
         }
 
-        setIsStreaming(false)
-        setStreamingState(null)
-        streamingConvIdRef.current = null
+        setStreamingState((prev) => { const { [convId]: _, ...rest } = prev; return rest })
+        streamingConvIdsRef.current.delete(convId)
 
         // Auto-title if first message
         const finalConv = useConversationsStore
@@ -282,13 +280,13 @@ export function useChat(conversationId: string | null): UseChatReturn {
         }
       }
     },
-    [isStreaming, addMessage, updateMessageById, removeMessageById, renameConv]
+    [addMessage, updateMessageById, removeMessageById, renameConv]
   )
 
   const retryMessage = useCallback(
     async (msg: Message) => {
       const convId = activeConvIdRef.current
-      if (!convId || (isStreaming && streamingConvIdRef.current === convId)) return
+      if (!convId || streamingConvIdsRef.current.has(convId)) return
       // Remove the failed user message — sendMessage will re-add it cleanly
       removeMessageById(convId, msg.id)
       const text = msg.blocks
@@ -305,7 +303,7 @@ export function useChat(conversationId: string | null): UseChatReturn {
       if (!settings) return
       await sendMessage(text, settings.defaultModel, settings.defaultProvider, images.length > 0 ? images : undefined)
     },
-    [isStreaming, removeMessageById, sendMessage]
+    [removeMessageById, sendMessage]
   )
 
   return { isStreaming, streamingState, sendMessage, stopStreaming, retryMessage }

@@ -36,8 +36,9 @@ interface Props {
 export function ConversationView({ onOpenSettings }: Props): JSX.Element {
   const { activeId, conversations } = useConversationsStore()
   const { settings } = useSettingsStore()
-  const { isStreaming, streamingState, sendMessage, stopStreaming, retryMessage } = useChat(activeId)
-  const isActiveStreaming = isStreaming && streamingState?.convId === activeId
+  const { streamingState, sendMessage, stopStreaming, retryMessage } = useChat(activeId)
+  const activeStream = activeId ? streamingState[activeId] : undefined
+  const isActiveStreaming = !!activeStream
 
   const missingKey =
     settings !== null &&
@@ -62,7 +63,7 @@ export function ConversationView({ onOpenSettings }: Props): JSX.Element {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [activeConv?.messages, streamingState])
+  }, [activeConv?.messages, activeStream])
 
   if (!activeId || !activeConv) {
     return (
@@ -115,8 +116,8 @@ export function ConversationView({ onOpenSettings }: Props): JSX.Element {
         ) : (
           <>
             {activeConv.messages.map((msg, i) => {
-              const message = streamingState && msg.id === streamingState.msgId
-                ? { ...msg, blocks: streamingState.blocks }
+              const message = activeStream && msg.id === activeStream.msgId
+                ? { ...msg, blocks: activeStream.blocks }
                 : msg
               return (
                 <Message
