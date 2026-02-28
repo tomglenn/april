@@ -3,9 +3,9 @@ import { X, Plus, Trash2, Eye, EyeOff } from 'lucide-react'
 import { useSettingsStore } from '../stores/settings'
 import type { MCPServerConfig, Settings } from '../types'
 
-type Personality = 'professional' | 'friendly' | 'creative' | 'concise'
+type Personality = 'professional' | 'friendly' | 'creative' | 'concise' | 'custom'
 
-const PERSONALITY_PROMPTS: Record<Personality, string> = {
+const PERSONALITY_PROMPTS: Record<Exclude<Personality, 'custom'>, string> = {
   professional: 'Communicate formally and precisely. Keep responses well-structured and focused on the task. Avoid small talk.',
   friendly: 'Communicate warmly and conversationally. Be encouraging and personable.',
   creative: 'Bring imagination and enthusiasm to everything. Think expansively and embrace creative exploration.',
@@ -16,7 +16,8 @@ const PERSONALITIES: { id: Personality; label: string; description: string }[] =
   { id: 'professional', label: 'Professional', description: 'Formal and structured' },
   { id: 'friendly', label: 'Friendly', description: 'Warm and conversational' },
   { id: 'creative', label: 'Creative', description: 'Imaginative and expansive' },
-  { id: 'concise', label: 'Concise', description: 'Brief and to the point' }
+  { id: 'concise', label: 'Concise', description: 'Brief and to the point' },
+  { id: 'custom', label: 'Custom', description: 'Write your own' }
 ]
 
 function detectPersonality(prompt: string): Personality | null {
@@ -26,12 +27,13 @@ function detectPersonality(prompt: string): Personality | null {
   return null
 }
 
-function applyPersonality(prompt: string, personality: Personality): string {
+function applyPersonality(prompt: string, personality: Personality, customText: string): string {
   let base = prompt
   for (const text of Object.values(PERSONALITY_PROMPTS)) {
     base = base.replace('\n\n' + text, '').replace(text, '')
   }
-  return base.trimEnd() + '\n\n' + PERSONALITY_PROMPTS[personality]
+  const addition = personality === 'custom' ? customText : PERSONALITY_PROMPTS[personality as Exclude<Personality, 'custom'>]
+  return base.trimEnd() + '\n\n' + addition
 }
 
 interface Props {
@@ -110,6 +112,7 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
   const [personality, setPersonality] = useState<Personality | null>(() =>
     detectPersonality(settings?.systemPrompt ?? '')
   )
+  const [customPrompt, setCustomPrompt] = useState(PERSONALITY_PROMPTS.friendly)
 
   useEffect(() => {
     if (settings) setForm(settings)
@@ -127,7 +130,7 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
   const handleSave = async (): Promise<void> => {
     setSaving(true)
     const toSave = personality
-      ? { ...form, systemPrompt: applyPersonality(form.systemPrompt, personality) }
+      ? { ...form, systemPrompt: applyPersonality(form.systemPrompt, personality, customPrompt) }
       : form
     await update(toSave)
     setSaving(false)
@@ -261,7 +264,7 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
 
           {/* Personality */}
           <p className={SECTION_TITLE} style={{ color: 'var(--muted)' }}>Personality</p>
-          <div className="grid grid-cols-2 gap-2 mb-4">
+          <div className="grid grid-cols-3 gap-2 mb-2">
             {PERSONALITIES.map(({ id, label, description }) => (
               <button
                 key={id}
@@ -278,6 +281,16 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
               </button>
             ))}
           </div>
+          {personality === 'custom' && (
+            <textarea
+              value={customPrompt}
+              onChange={(e) => setCustomPrompt(e.target.value)}
+              rows={3}
+              placeholder="Describe how April should communicate…"
+              className="w-full px-3 py-2 rounded-md text-sm outline-none mb-4 resize-y"
+              style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'inherit' }}
+            />
+          )}
 
           {/* MCP Servers */}
           <div className="flex items-center justify-between mt-5 mb-3">

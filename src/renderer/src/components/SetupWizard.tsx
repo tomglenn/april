@@ -4,9 +4,9 @@ import { useSettingsStore } from '../stores/settings'
 import type { Provider } from '../types'
 
 type Step = 1 | 2 | 3 | 4 | 'done'
-type Personality = 'professional' | 'friendly' | 'creative' | 'concise'
+type Personality = 'professional' | 'friendly' | 'creative' | 'concise' | 'custom'
 
-const PERSONALITY_PROMPTS: Record<Personality, string> = {
+const PERSONALITY_PROMPTS: Record<Exclude<Personality, 'custom'>, string> = {
   professional:
     'Communicate formally and precisely. Keep responses well-structured and focused on the task. Avoid small talk.',
   friendly: 'Communicate warmly and conversationally. Be encouraging and personable.',
@@ -20,7 +20,8 @@ const PERSONALITIES: { id: Personality; label: string; description: string }[] =
   { id: 'professional', label: 'Professional', description: 'Formal and structured' },
   { id: 'friendly', label: 'Friendly', description: 'Warm and conversational' },
   { id: 'creative', label: 'Creative', description: 'Imaginative and expansive' },
-  { id: 'concise', label: 'Concise', description: 'Brief and to the point' }
+  { id: 'concise', label: 'Concise', description: 'Brief and to the point' },
+  { id: 'custom', label: 'Custom', description: 'Write your own' }
 ]
 
 const inputStyle: React.CSSProperties = {
@@ -67,6 +68,7 @@ export function SetupWizard(): JSX.Element {
   const [enableImages, setEnableImages] = useState(false)
   const [imageKey, setImageKey] = useState('')
   const [personality, setPersonality] = useState<Personality>('friendly')
+  const [customPrompt, setCustomPrompt] = useState(PERSONALITY_PROMPTS.friendly)
 
   // Load models when provider changes in step 2 (Ollama always uses free text)
   useEffect(() => {
@@ -115,7 +117,7 @@ export function SetupWizard(): JSX.Element {
 
   async function handleFinish(): Promise<void> {
     const base = settings?.systemPrompt ?? ''
-    const addition = PERSONALITY_PROMPTS[personality]
+    const addition = personality === 'custom' ? customPrompt : PERSONALITY_PROMPTS[personality]
     const newPrompt = base.trimEnd() + '\n\n' + addition
     await update({ systemPrompt: newPrompt, setupCompleted: true })
     setStep('done')
@@ -388,13 +390,13 @@ export function SetupWizard(): JSX.Element {
                 </p>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
                 {PERSONALITIES.map(({ id, label, description }) => (
                   <button
                     key={id}
                     onClick={() => setPersonality(id)}
                     style={{
-                      padding: '16px',
+                      padding: '14px 10px',
                       borderRadius: '8px',
                       border: personality === id ? '2px solid var(--accent)' : '1px solid var(--border)',
                       background: 'var(--bg)',
@@ -403,11 +405,20 @@ export function SetupWizard(): JSX.Element {
                       textAlign: 'left'
                     }}
                   >
-                    <div style={{ fontWeight: 600, fontSize: '14px', marginBottom: '4px' }}>{label}</div>
-                    <div style={{ fontSize: '12px', color: 'var(--muted)' }}>{description}</div>
+                    <div style={{ fontWeight: 600, fontSize: '13px', marginBottom: '3px' }}>{label}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--muted)' }}>{description}</div>
                   </button>
                 ))}
               </div>
+              {personality === 'custom' && (
+                <textarea
+                  value={customPrompt}
+                  onChange={(e) => setCustomPrompt(e.target.value)}
+                  rows={3}
+                  placeholder="Describe how April should communicate…"
+                  style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }}
+                />
+              )}
 
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <button style={primaryBtnStyle} onClick={handleFinish}>
