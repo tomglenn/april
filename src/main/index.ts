@@ -4,7 +4,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerAllHandlers } from './ipc'
 import { store } from './store'
 
-app.setName('April Agent')
+app.setName('April')
 
 const iconPath = app.isPackaged
   ? join(process.resourcesPath, 'icon.icns')
@@ -60,7 +60,6 @@ function createWindow(): BrowserWindow {
 
   if (isMac) {
     windowOptions.titleBarStyle = 'hiddenInset'
-    windowOptions.vibrancy = 'sidebar'
   }
 
   const mainWindow = new BrowserWindow(windowOptions)
@@ -68,6 +67,12 @@ function createWindow(): BrowserWindow {
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
   })
+
+  // Fallback: if ready-to-show never fires (e.g. slow cold start), show after 3s
+  const showFallback = setTimeout(() => {
+    if (!mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.show()
+  }, 3000)
+  mainWindow.once('show', () => clearTimeout(showFallback))
 
   mainWindow.on('resize', () => saveBounds(mainWindow))
   mainWindow.on('move', () => saveBounds(mainWindow))
@@ -104,7 +109,7 @@ app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.april-agent')
 
   if (process.platform === 'darwin') {
-    app.dock.setIcon(iconPath)
+    try { app.dock.setIcon(iconPath) } catch { /* non-critical */ }
   }
 
   app.on('browser-window-created', (_, window) => {
@@ -117,7 +122,9 @@ app.whenReady().then(() => {
   createWindow()
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    const wins = BrowserWindow.getAllWindows()
+    if (wins.length === 0) createWindow()
+    else { wins[0].show(); wins[0].focus() }
   })
 })
 

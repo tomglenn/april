@@ -35,7 +35,8 @@ const defaults: AppStore = {
     defaultProvider: 'anthropic',
     defaultModel: 'claude-sonnet-4-6',
     theme: 'dark',
-    systemPrompt: DEFAULT_SYSTEM_PROMPT
+    systemPrompt: DEFAULT_SYSTEM_PROMPT,
+    setupCompleted: false
   }
 }
 

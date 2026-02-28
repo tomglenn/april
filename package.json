@@ -1,6 +1,6 @@
 {
-  "name": "april-agent",
-  "productName": "April Agent",
+  "name": "april",
+  "productName": "April",
   "version": "1.0.0",
   "description": "AI Desktop Agent",
   "main": "./out/main/index.js",
@@ -17,7 +17,8 @@
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",
-    "build:linux": "npm run build && electron-builder --linux"
+    "build:linux": "npm run build && electron-builder --linux",
+    "deploy:mac": "bash scripts/install-mac.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.36.3",
@@ -34,8 +35,8 @@
     "zustand": "^5.0.3"
   },
   "build": {
-    "appId": "com.april-agent",
-    "productName": "April Agent",
+    "appId": "com.april",
+    "productName": "April",
     "directories": {
       "buildResources": "resources"
     },

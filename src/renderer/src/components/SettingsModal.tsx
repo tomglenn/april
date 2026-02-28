@@ -3,6 +3,37 @@ import { X, Plus, Trash2, Eye, EyeOff } from 'lucide-react'
 import { useSettingsStore } from '../stores/settings'
 import type { MCPServerConfig, Settings } from '../types'
 
+type Personality = 'professional' | 'friendly' | 'creative' | 'concise'
+
+const PERSONALITY_PROMPTS: Record<Personality, string> = {
+  professional: 'Communicate formally and precisely. Keep responses well-structured and focused on the task. Avoid small talk.',
+  friendly: 'Communicate warmly and conversationally. Be encouraging and personable.',
+  creative: 'Bring imagination and enthusiasm to everything. Think expansively and embrace creative exploration.',
+  concise: 'Always be brief. Get to the point immediately. Use as few words as possible while remaining accurate.'
+}
+
+const PERSONALITIES: { id: Personality; label: string; description: string }[] = [
+  { id: 'professional', label: 'Professional', description: 'Formal and structured' },
+  { id: 'friendly', label: 'Friendly', description: 'Warm and conversational' },
+  { id: 'creative', label: 'Creative', description: 'Imaginative and expansive' },
+  { id: 'concise', label: 'Concise', description: 'Brief and to the point' }
+]
+
+function detectPersonality(prompt: string): Personality | null {
+  for (const [id, text] of Object.entries(PERSONALITY_PROMPTS)) {
+    if (prompt.includes(text)) return id as Personality
+  }
+  return null
+}
+
+function applyPersonality(prompt: string, personality: Personality): string {
+  let base = prompt
+  for (const text of Object.values(PERSONALITY_PROMPTS)) {
+    base = base.replace('\n\n' + text, '').replace(text, '')
+  }
+  return base.trimEnd() + '\n\n' + PERSONALITY_PROMPTS[personality]
+}
+
 interface Props {
   onClose: () => void
 }
@@ -69,12 +100,16 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
       defaultProvider: 'anthropic',
       defaultModel: 'claude-sonnet-4-6',
       theme: 'dark',
-      systemPrompt: ''
+      systemPrompt: '',
+      setupCompleted: true
     }
   )
   const [models, setModels] = useState<string[]>([])
   const [mcpServers, setMcpServers] = useState<MCPServerConfig[]>([])
   const [saving, setSaving] = useState(false)
+  const [personality, setPersonality] = useState<Personality | null>(() =>
+    detectPersonality(settings?.systemPrompt ?? '')
+  )
 
   useEffect(() => {
     if (settings) setForm(settings)
@@ -91,7 +126,10 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
 
   const handleSave = async (): Promise<void> => {
     setSaving(true)
-    await update(form)
+    const toSave = personality
+      ? { ...form, systemPrompt: applyPersonality(form.systemPrompt, personality) }
+      : form
+    await update(toSave)
     setSaving(false)
     onClose()
   }
@@ -219,6 +257,26 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Personality */}
+          <p className={SECTION_TITLE} style={{ color: 'var(--muted)' }}>Personality</p>
+          <div className="grid grid-cols-2 gap-2 mb-4">
+            {PERSONALITIES.map(({ id, label, description }) => (
+              <button
+                key={id}
+                onClick={() => setPersonality(id)}
+                className="p-3 rounded-lg text-left transition-colors"
+                style={{
+                  background: 'var(--bg)',
+                  border: personality === id ? '2px solid var(--accent)' : '1px solid var(--border)',
+                  color: 'var(--text)'
+                }}
+              >
+                <div className="text-xs font-semibold mb-0.5">{label}</div>
+                <div className="text-xs" style={{ color: 'var(--muted)' }}>{description}</div>
+              </button>
+            ))}
           </div>
 
           {/* MCP Servers */}

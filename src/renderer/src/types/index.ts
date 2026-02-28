@@ -48,6 +48,7 @@ export interface Settings {
   defaultModel: string
   theme: 'dark' | 'light' | 'system'
   systemPrompt: string
+  setupCompleted: boolean
 }
 
 // Extend window for the API bridge

@@ -4,6 +4,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
 import { store } from '../store'
 import { TOOLS, executeTool } from '../tools'
+import type { ToolDefinition } from '../tools'
 import type { Settings, Message, ContentBlock } from '../../renderer/src/types'
 
 export interface SendMessagePayload {
@@ -311,12 +312,13 @@ async function runOpenAILoop(
   model: string,
   initialMessages: OpenAI.ChatCompletionMessageParam[],
   sendChunk: (data: ChunkData) => void,
-  signal: AbortSignal
+  signal: AbortSignal,
+  tools: ToolDefinition[] = []
 ): Promise<Message> {
   const messages = [...initialMessages]
   const allBlocks: ContentBlock[] = []
 
-  const openaiTools: OpenAI.ChatCompletionTool[] = TOOLS.map((t) => ({
+  const openaiTools: OpenAI.ChatCompletionTool[] = tools.map((t) => ({
     type: 'function' as const,
     function: { name: t.name, description: t.description, parameters: t.input_schema }
   }))
@@ -336,7 +338,7 @@ async function runOpenAILoop(
     let stream: Awaited<ReturnType<typeof openai.chat.completions.create>>
     try {
       stream = await openai.chat.completions.create(
-        { model, messages, tools: openaiTools, stream: true },
+        { model, messages, ...(openaiTools.length > 0 && { tools: openaiTools }), stream: true },
         { signal }
       )
     } catch (err: unknown) {
@@ -448,6 +450,10 @@ export function registerChatHandlers(): void {
     let finalMsg: Message | null = null
 
     try {
+      const availableTools = TOOLS.filter(
+        (t) => t.name !== 'generate_image' || !!settings.openaiApiKey
+      )
+
       if (payload.provider === 'anthropic') {
         const anthropic = new Anthropic({ apiKey: settings.anthropicApiKey })
         const anthropicMessages = messagesToAnthropicFormat(payload.messages)
@@ -457,7 +463,7 @@ export function registerChatHandlers(): void {
           model: payload.model,
           max_tokens: payload.enableThinking ? 16000 : 8096,
           system: systemPrompt || undefined,
-          tools: TOOLS,
+          tools: availableTools,
           messages: anthropicMessages
         }
 
@@ -478,7 +484,7 @@ export function registerChatHandlers(): void {
           ...messagesToOpenAIFormat(payload.messages)
         ]
 
-        finalMsg = await runOpenAILoop(openai, payload.model, openaiMessages, sendChunk, controller.signal)
+        finalMsg = await runOpenAILoop(openai, payload.model, openaiMessages, sendChunk, controller.signal, payload.provider === 'openai' ? availableTools : [])
         if (finalMsg) finalMsg.provider = payload.provider
       }
     } catch (err) {
