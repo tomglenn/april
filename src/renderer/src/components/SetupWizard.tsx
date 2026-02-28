@@ -311,7 +311,8 @@ export function SetupWizard(): JSX.Element {
                 )}
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <button style={skipBtnStyle} onClick={() => setStep(1)}>← Back</button>
                 <button
                   style={{ ...primaryBtnStyle, opacity: step2Valid ? 1 : 0.5, cursor: step2Valid ? 'pointer' : 'default' }}
                   disabled={!step2Valid}
@@ -385,7 +386,8 @@ export function SetupWizard(): JSX.Element {
                 )
               )}
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <button style={skipBtnStyle} onClick={() => setStep(2)}>← Back</button>
                 <button style={primaryBtnStyle} onClick={handleStep3Continue}>
                   Continue →
                 </button>
@@ -435,7 +437,8 @@ export function SetupWizard(): JSX.Element {
                 />
               )}
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <button style={skipBtnStyle} onClick={() => setStep(3)}>← Back</button>
                 <button style={primaryBtnStyle} onClick={handleFinish}>
                   Finish Setup →
                 </button>
