@@ -298,7 +298,7 @@ export function SetupWizard(): JSX.Element {
                         transform: 'translateY(-50%)',
                         pointerEvents: 'none',
                         color: 'var(--muted)',
-                        fontSize: '12px'
+                        fontSize: '16px'
                       }}
                     >
                       ▾
