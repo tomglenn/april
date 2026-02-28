@@ -280,17 +280,32 @@ export function SetupWizard(): JSX.Element {
                     style={inputStyle}
                   />
                 ) : models.length > 0 ? (
-                  <select
-                    value={model}
-                    onChange={(e) => setModel(e.target.value)}
-                    style={{ ...inputStyle, appearance: 'auto' }}
-                  >
-                    {models.map((m) => (
-                      <option key={m} value={m}>{m}</option>
-                    ))}
-                  </select>
+                  <div style={{ position: 'relative' }}>
+                    <select
+                      value={model}
+                      onChange={(e) => setModel(e.target.value)}
+                      style={{ ...inputStyle, appearance: 'none', paddingRight: '2rem', cursor: 'pointer' }}
+                    >
+                      {models.map((m) => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                    <span
+                      style={{
+                        position: 'absolute',
+                        right: '10px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        pointerEvents: 'none',
+                        color: 'var(--muted)',
+                        fontSize: '12px'
+                      }}
+                    >
+                      ▾
+                    </span>
+                  </div>
                 ) : (
-                  <div style={{ fontSize: '13px', color: 'var(--muted)', padding: '8px 0' }}>
+                  <div style={{ ...inputStyle, color: 'var(--muted)', cursor: 'default' }}>
                     Loading models…
                   </div>
                 )}
