@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node:*)",
+      "WebFetch(domain:electron-vite.org)",
+      "WebSearch",
+      "Bash(npm create:*)",
+      "Bash(export:*)"
+    ]
+  }
+}

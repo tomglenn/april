@@ -1,0 +1,101 @@
+import { create } from 'zustand'
+import type { Conversation, Message } from '../types'
+
+interface ConversationsState {
+  conversations: Conversation[]
+  activeId: string | null
+  loading: boolean
+
+  // Actions
+  setConversations: (convs: Conversation[]) => void
+  setActiveId: (id: string | null) => void
+  addConversation: (conv: Conversation) => void
+  updateConversation: (conv: Conversation) => void
+  removeConversation: (id: string) => void
+  addMessage: (conversationId: string, message: Message) => void
+  updateLastMessage: (conversationId: string, updater: (msg: Message) => Message) => void
+
+  // Async actions
+  load: () => Promise<void>
+  createNew: () => Promise<Conversation>
+  deleteConv: (id: string) => Promise<void>
+  renameConv: (id: string, title: string) => Promise<void>
+}
+
+export const useConversationsStore = create<ConversationsState>((set, get) => ({
+  conversations: [],
+  activeId: null,
+  loading: false,
+
+  setConversations: (conversations) => set({ conversations }),
+  setActiveId: (activeId) => set({ activeId }),
+
+  addConversation: (conv) =>
+    set((state) => ({ conversations: [conv, ...state.conversations] })),
+
+  updateConversation: (conv) =>
+    set((state) => ({
+      conversations: state.conversations.map((c) => (c.id === conv.id ? conv : c))
+    })),
+
+  removeConversation: (id) =>
+    set((state) => ({
+      conversations: state.conversations.filter((c) => c.id !== id),
+      activeId: state.activeId === id ? null : state.activeId
+    })),
+
+  addMessage: (conversationId, message) => {
+    set((state) => ({
+      conversations: state.conversations.map((c) => {
+        if (c.id !== conversationId) return c
+        const updated = { ...c, messages: [...c.messages, message], updatedAt: Date.now() }
+        // Persist to store
+        window.api.updateConversation(updated)
+        return updated
+      })
+    }))
+  },
+
+  updateLastMessage: (conversationId, updater) => {
+    set((state) => ({
+      conversations: state.conversations.map((c) => {
+        if (c.id !== conversationId) return c
+        const messages = [...c.messages]
+        const lastIdx = messages.length - 1
+        if (lastIdx < 0) return c
+        messages[lastIdx] = updater(messages[lastIdx])
+        return { ...c, messages }
+      })
+    }))
+  },
+
+  load: async () => {
+    set({ loading: true })
+    try {
+      const convs = await window.api.listConversations()
+      set({ conversations: convs, loading: false })
+    } catch {
+      set({ loading: false })
+    }
+  },
+
+  createNew: async () => {
+    const conv = await window.api.createConversation()
+    get().addConversation(conv)
+    set({ activeId: conv.id })
+    return conv
+  },
+
+  deleteConv: async (id) => {
+    await window.api.deleteConversation(id)
+    get().removeConversation(id)
+  },
+
+  renameConv: async (id, title) => {
+    const conv = get().conversations.find((c) => c.id === id)
+    if (!conv) return
+    const updated = { ...conv, title }
+    await window.api.updateConversation(updated)
+    get().updateConversation(updated)
+  }
+}))
