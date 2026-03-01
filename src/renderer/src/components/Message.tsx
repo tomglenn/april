@@ -73,9 +73,9 @@ function downloadImage(src: string): void {
   link.click()
 }
 
-function TextContent({ text, showCursor }: { text: string; showCursor?: boolean }): JSX.Element {
+function TextContent({ text }: { text: string }): JSX.Element {
   return (
-    <div className={`prose text-sm${showCursor ? ' streaming-cursor' : ''}`} style={{ color: 'var(--text)' }}>
+    <div className="prose text-sm" style={{ color: 'var(--text)' }}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeHighlight]}
@@ -203,15 +203,9 @@ export function Message({ message, isStreaming = false, onRetry }: Props): JSX.E
           {items.map((item, i) => {
             const fadeClass = isStreaming ? ' fade-in' : ''
             if (item.kind === 'text') {
-              const isLastText = (() => {
-                for (let j = items.length - 1; j >= 0; j--) {
-                  if (items[j].kind === 'text') return j === i
-                }
-                return false
-              })()
               return (
                 <div key={i} className={fadeClass.trim()}>
-                  <TextContent text={item.text} showCursor={isStreaming && isLastText} />
+                  <TextContent text={item.text} />
                 </div>
               )
             }

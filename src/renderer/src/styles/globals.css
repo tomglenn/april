@@ -163,19 +163,6 @@ code {
   -webkit-app-region: no-drag;
 }
 
-/* Streaming cursor */
-@keyframes cursor-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-
-.streaming-cursor > :last-child::after {
-  content: '\258C';
-  animation: cursor-blink 0.8s step-end infinite;
-  color: var(--accent);
-  margin-left: 1px;
-}
-
 /* Fade-in for new content blocks */
 @keyframes fade-in {
   from { opacity: 0; }
