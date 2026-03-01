@@ -9,13 +9,42 @@ interface Props {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+function parseMcpTool(name: string): { server: string; tool: string } | null {
+  const match = name.match(/^mcp__(\w+)__(.+)$/)
+  if (!match) return null
+  return { server: match[1], tool: match[2] }
+}
+
+function friendlyToolLabel(name: string): string {
+  const mcp = parseMcpTool(name)
+  if (!mcp) return name
+  if (mcp.server === 'Memory') {
+    switch (mcp.tool) {
+      case 'read_graph': return 'recalled memory'
+      case 'search_nodes': return 'searched memory'
+      case 'create_entities': return 'remembered'
+      case 'add_observations': return 'updated memory'
+      case 'delete_entities': return 'forgot'
+      case 'open_nodes': return 'opened memory'
+      case 'create_relations': return 'linked memories'
+      case 'delete_observations': return 'cleared memory'
+      case 'delete_relations': return 'unlinked memories'
+    }
+  }
+  return `${mcp.tool.replace(/_/g, ' ')} (${mcp.server})`
+}
+
 function toolIcon(name: string): JSX.Element {
   switch (name) {
     case 'web_search': return <Search size={11} />
     case 'browse_url': return <Globe size={11} />
     case 'get_weather': return <CloudSun size={11} />
     case 'generate_image': return <ImageIcon size={11} />
-    default: return <Wrench size={11} />
+    default: {
+      const mcp = parseMcpTool(name)
+      if (mcp?.server === 'Memory') return <Brain size={11} />
+      return <Wrench size={11} />
+    }
   }
 }
 
@@ -52,8 +81,12 @@ function currentStatusLabel(blocks: ContentBlock[]): string {
             ? `${label} "${gi.prompt.length > 30 ? gi.prompt.slice(0, 30) + '…' : gi.prompt}"`
             : 'Generating image...'
         }
-        default:
+        default: {
+          const mcp = parseMcpTool(b.name)
+          if (mcp?.server === 'Memory') return 'Recalling memory...'
+          if (mcp) return `Running ${mcp.tool.replace(/_/g, ' ')} (${mcp.server})...`
           return `Running ${b.name}...`
+        }
       }
     }
     // If we hit a tool_result, the last action finished — we're between turns
@@ -89,8 +122,10 @@ function summaryLabel(blocks: ContentBlock[]): string {
       case 'generate_image':
         parts.push(n === 1 ? 'generated image' : `generated ${n} images`)
         break
-      default:
-        parts.push(n === 1 ? name : `${name} ${n}×`)
+      default: {
+        const label = friendlyToolLabel(name)
+        parts.push(n === 1 ? label : `${label} ${n}×`)
+      }
     }
   }
 
@@ -249,7 +284,7 @@ export function ActivityLog({ blocks, isStreaming }: Props): JSX.Element | null 
               <div key={tu.id}>
                 <div className="flex items-center gap-1.5 mb-0.5" style={{ color: 'var(--muted)' }}>
                   {toolIcon(tu.name)}
-                  <span className="font-medium">{tu.name}</span>
+                  <span className="font-medium">{friendlyToolLabel(tu.name)}</span>
                   {inputStr && (
                     <span
                       className="font-mono truncate max-w-[240px]"
