@@ -19,7 +19,7 @@ A personal AI assistant for your desktop. Chat with Claude, GPT, or local models
   - **Filesystem** — read, write, and search files on your computer
   - **Memory** — persistent key-value memory across conversations
   - **GitHub** — search repos, manage issues and PRs
-  - **Brave Search** — higher-quality web search (upgrade over built-in DuckDuckGo)
+  - **Brave Search** — web search via official API with structured results
   - **SQLite** — query and modify local databases with natural language
 - **Extended thinking** support for Claude models
 - **Activity log** — see tool calls and MCP actions as they happen
