@@ -170,7 +170,7 @@ code {
 }
 
 .streaming-cursor > :last-child::after {
-  content: '\u258C';
+  content: '\258C';
   animation: cursor-blink 0.8s step-end infinite;
   color: var(--accent);
   margin-left: 1px;
