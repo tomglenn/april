@@ -8,16 +8,20 @@ A personal AI assistant for your desktop. Chat with Claude, GPT, or local models
 
 - **Multiple AI providers** — Anthropic (Claude), OpenAI (GPT), or any local model via Ollama
 - **Streaming responses** with real-time output
+- **Global hotkey overlay** — summon a quick-prompt window from anywhere, then open the conversation in the full app
 - **Built-in tools** the AI can use autonomously:
   - Web search (DuckDuckGo)
   - Browse any URL
   - Weather forecasts (current + 4-day)
   - Image generation via GPT-Image-1 (requires OpenAI key)
+- **MCP server support** — connect any Model Context Protocol server via the built-in catalog
 - **Extended thinking** support for Claude models
+- **Activity log** — see tool calls and MCP actions as they happen
 - **Conversation history** with auto-generated titles
 - **First-run setup wizard** for quick onboarding
+- **Personalisation** — set a name and communication style the AI adapts to
 - **Dark/light/system theme**
-- **Fully local** — your API keys and conversation history never leave your machine
+- **Your data stays on-device** — API keys and conversation history are stored locally; only your messages are sent to whichever AI provider you choose
 
 ## Stack
 
