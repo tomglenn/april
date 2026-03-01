@@ -50,6 +50,13 @@ export interface LocalSettings {
   windowBounds?: { x: number; y: number; width: number; height: number }
 }
 
+export interface Reminder {
+  id: string
+  message: string
+  fireAt: number
+  createdAt: number
+}
+
 // Settings stored in {dataFolder}/config.json (synced across devices)
 export interface SyncedSettings {
   defaultProvider: Provider
@@ -61,6 +68,8 @@ export interface SyncedSettings {
   userBio: string
   mcpServers: MCPServerConfig[]
   quickPromptHotkey: string
+  runInBackground: boolean
+  ntfyTopic: string
 }
 
 // Combined view for the renderer — it doesn't need to know about the split
@@ -94,9 +103,14 @@ declare global {
       onSyncChanged: (cb: () => void) => void
       offSyncChanged: (cb: () => void) => void
       notifyHotkeyChanged: () => void
+      notifyBackgroundChanged: () => void
       openInApp: (conversationId: string) => void
       onOpenConversation: (cb: (id: string) => void) => void
       offOpenConversation: (cb: (id: string) => void) => void
+      listReminders: () => Promise<Reminder[]>
+      cancelReminder: (id: string) => Promise<boolean>
+      onRemindersChanged: (cb: () => void) => void
+      offRemindersChanged: (cb: () => void) => void
     }
   }
 }

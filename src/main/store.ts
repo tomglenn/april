@@ -52,7 +52,9 @@ const syncedDefaults: SyncedSettings = {
   userLocation: '',
   userBio: '',
   mcpServers: [],
-  quickPromptHotkey: 'CmdOrCtrl+Shift+Space'
+  quickPromptHotkey: 'CmdOrCtrl+Shift+Space',
+  runInBackground: true,
+  ntfyTopic: ''
 }
 
 export function getDataFolder(): string {
@@ -78,7 +80,7 @@ export function ensureDataFolderExists(): void {
 
 let lastOwnWriteTime = 0
 
-function markOwnWrite(): void {
+export function markOwnWrite(): void {
   lastOwnWriteTime = Date.now()
 }
 

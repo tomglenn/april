@@ -1,7 +1,8 @@
-import { useState } from 'react'
-import { Plus, Settings, MessageSquare, Trash2, Pencil, Check, X, Search } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Plus, Settings, MessageSquare, Trash2, Pencil, Check, X, Search, Bell } from 'lucide-react'
 import { useConversationsStore } from '../stores/conversations'
-import type { Conversation } from '../types'
+import { RemindersPanel } from './RemindersPanel'
+import type { Conversation, Reminder } from '../types'
 
 interface SidebarProps {
   onOpenSettings: () => void
@@ -108,6 +109,17 @@ export function Sidebar({ onOpenSettings }: SidebarProps): JSX.Element {
   const { conversations, activeId, setActiveId, createNew, deleteConv, renameConv } =
     useConversationsStore()
   const [query, setQuery] = useState('')
+  const [showReminders, setShowReminders] = useState(false)
+  const [reminderCount, setReminderCount] = useState(0)
+
+  useEffect(() => {
+    const fetch = (): void => {
+      window.api.listReminders().then((r: Reminder[]) => setReminderCount(r.length)).catch(() => {})
+    }
+    fetch()
+    window.api.onRemindersChanged(fetch)
+    return () => window.api.offRemindersChanged(fetch)
+  }, [])
 
   const filtered = query.trim()
     ? conversations.filter((c) => c.title.toLowerCase().includes(query.toLowerCase()))
@@ -189,16 +201,33 @@ export function Sidebar({ onOpenSettings }: SidebarProps): JSX.Element {
         )}
       </div>
 
-      {/* Settings button at bottom */}
-      <div className="px-2 py-2 shrink-0" style={{ borderTop: '1px solid var(--border)' }}>
+      {/* Bottom bar */}
+      <div className="relative px-2 py-2 shrink-0 flex items-center gap-1" style={{ borderTop: '1px solid var(--border)' }}>
         <button
           onClick={onOpenSettings}
-          className="flex items-center gap-2 w-full px-3 py-2 rounded-md text-xs transition-colors hover:opacity-80"
+          className="flex items-center gap-2 flex-1 px-3 py-2 rounded-md text-xs transition-colors hover:opacity-80"
           style={{ color: 'var(--muted)' }}
         >
           <Settings size={14} />
           Settings
         </button>
+        <button
+          onClick={() => setShowReminders((v) => !v)}
+          className="relative p-2 rounded-md transition-colors hover:opacity-80"
+          style={{ color: 'var(--muted)' }}
+          title="Reminders"
+        >
+          <Bell size={14} />
+          {reminderCount > 0 && (
+            <span
+              className="absolute -top-0.5 -right-0.5 flex items-center justify-center text-white text-[9px] font-bold rounded-full"
+              style={{ background: 'var(--accent)', width: '15px', height: '15px' }}
+            >
+              {reminderCount}
+            </span>
+          )}
+        </button>
+        {showReminders && <RemindersPanel onClose={() => setShowReminders(false)} />}
       </div>
     </div>
   )

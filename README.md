@@ -14,12 +14,14 @@ A personal AI assistant for your desktop. Chat with Claude, GPT, or local models
   - Browse any URL
   - Weather forecasts (current + 4-day)
   - Image generation via GPT-Image-1 (requires OpenAI key)
+  - Reminders — "remind me in 30 minutes to check the oven" (optional [ntfy.sh](https://ntfy.sh) push notifications)
 - **MCP server support** — connect any Model Context Protocol server via the built-in catalog
 - **Extended thinking** support for Claude models
 - **Activity log** — see tool calls and MCP actions as they happen
 - **Conversation history** with auto-generated titles
 - **First-run setup wizard** for quick onboarding
 - **Personalisation** — set a name and communication style the AI adapts to
+- **Background mode** — runs in the system tray so reminders fire even when the window is closed
 - **Dark/light/system theme**
 - **Your data stays on-device** — API keys and conversation history are stored locally; only your messages are sent to whichever AI provider you choose
 

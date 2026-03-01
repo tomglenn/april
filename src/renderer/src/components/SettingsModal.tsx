@@ -182,7 +182,9 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
       userBio: '',
       mcpServers: [],
       dataFolder: '',
-      quickPromptHotkey: 'CmdOrCtrl+Shift+Space'
+      quickPromptHotkey: 'CmdOrCtrl+Shift+Space',
+      runInBackground: true,
+      ntfyTopic: ''
     }
   )
   const [dataFolder, setDataFolder] = useState('')
@@ -246,8 +248,10 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
       ? { ...form, systemPrompt: applyPersonality(form.systemPrompt, personality, customPrompt) }
       : form
     const hotkeyChanged = settings?.quickPromptHotkey !== toSave.quickPromptHotkey
+    const backgroundChanged = settings?.runInBackground !== toSave.runInBackground
     await update(toSave)
     if (hotkeyChanged) window.api.notifyHotkeyChanged()
+    if (backgroundChanged) window.api.notifyBackgroundChanged()
     setSaving(false)
     onClose()
   }
@@ -526,6 +530,40 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
             {/* ── Advanced ── */}
             {tab === 'advanced' && (
               <>
+                {/* Run in Background */}
+                <div className="mb-5">
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <div>
+                      <div className="text-xs font-medium" style={{ color: 'var(--muted)' }}>Run in Background</div>
+                      <div className="text-xs mt-0.5" style={{ color: 'var(--muted)', opacity: 0.6 }}>
+                        Keep running in background when window is closed (required for reminders)
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={form.runInBackground ?? true}
+                      onChange={(e) => setForm((f) => ({ ...f, runInBackground: e.target.checked }))}
+                      className="ml-3"
+                    />
+                  </label>
+                </div>
+
+                {/* ntfy.sh Topic */}
+                <div className="mb-5">
+                  <Label>ntfy.sh Topic</Label>
+                  <p className="text-xs mb-2" style={{ color: 'var(--muted)' }}>
+                    Get reminders on your phone via ntfy.sh — enter a topic name (e.g. <code>april-reminders</code>). Leave empty to disable.
+                  </p>
+                  <input
+                    type="text"
+                    value={form.ntfyTopic ?? ''}
+                    onChange={(e) => set('ntfyTopic', e.target.value)}
+                    placeholder="e.g. april-reminders"
+                    className={inputCls}
+                    style={inputStyle}
+                  />
+                </div>
+
                 {/* Quick Prompt Hotkey */}
                 <div className="mb-5">
                   <Label>Quick Prompt Hotkey</Label>

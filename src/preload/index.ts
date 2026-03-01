@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { Conversation, Settings, Message } from '../renderer/src/types'
+import type { Conversation, Settings, Message, Reminder } from '../renderer/src/types'
 import type { SendMessagePayload, ChunkData } from '../main/ipc/chat'
 import type { MCPServerStatus } from '../main/mcp'
 
@@ -9,6 +9,7 @@ type ChunkWrapper = Parameters<typeof ipcRenderer.on>[1]
 const chunkListenerMap = new Map<(data: ChunkData) => void, ChunkWrapper>()
 const syncListenerMap = new Map<() => void, ChunkWrapper>()
 const openConvListenerMap = new Map<(id: string) => void, ChunkWrapper>()
+const remindersListenerMap = new Map<() => void, ChunkWrapper>()
 
 const api = {
   // Chat
@@ -81,6 +82,7 @@ const api = {
 
   // Quick Prompt
   notifyHotkeyChanged: (): void => ipcRenderer.send('settings:hotkeyChanged'),
+  notifyBackgroundChanged: (): void => ipcRenderer.send('settings:backgroundChanged'),
   openInApp: (conversationId: string): void =>
     ipcRenderer.send('overlay:openInApp', conversationId),
   onOpenConversation: (cb: (id: string) => void): void => {
@@ -93,6 +95,24 @@ const api = {
     if (wrapper) {
       ipcRenderer.off('open-conversation', wrapper)
       openConvListenerMap.delete(cb)
+    }
+  },
+
+  // Reminders
+  listReminders: (): Promise<Reminder[]> =>
+    ipcRenderer.invoke('reminders:list'),
+  cancelReminder: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke('reminders:cancel', id),
+  onRemindersChanged: (cb: () => void): void => {
+    const wrapper: ChunkWrapper = () => cb()
+    remindersListenerMap.set(cb, wrapper)
+    ipcRenderer.on('reminders:changed', wrapper)
+  },
+  offRemindersChanged: (cb: () => void): void => {
+    const wrapper = remindersListenerMap.get(cb)
+    if (wrapper) {
+      ipcRenderer.off('reminders:changed', wrapper)
+      remindersListenerMap.delete(cb)
     }
   }
 }

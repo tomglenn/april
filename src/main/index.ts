@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, screen, globalShortcut, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, screen, globalShortcut, ipcMain, Tray, Menu, nativeImage } from 'electron'
 import { join } from 'path'
 import { execSync } from 'child_process'
 import { watch, existsSync, readFileSync, writeFileSync } from 'fs'
@@ -34,6 +34,7 @@ import {
   LEGACY_CONFIG_PATH
 } from './store'
 import { mcpManager } from './mcp'
+import { loadAndScheduleReminders } from './reminders'
 import type { FSWatcher } from 'fs'
 import type { Conversation, Settings } from '../renderer/src/types'
 
@@ -248,9 +249,14 @@ function createWindow(): BrowserWindow {
 
   mainWindow.on('resize', () => saveBounds(mainWindow))
   mainWindow.on('move', () => saveBounds(mainWindow))
-  mainWindow.on('close', () => {
+  mainWindow.on('close', (event) => {
     if (!mainWindow.isMinimized() && !mainWindow.isMaximized()) {
       localStore.set('windowBounds', mainWindow.getBounds())
+    }
+    const settings = getSyncedSettings()
+    if (settings.runInBackground && !isQuitting) {
+      event.preventDefault()
+      mainWindow.hide()
     }
   })
 
@@ -281,6 +287,65 @@ function createWindow(): BrowserWindow {
 }
 
 let mainWindow: BrowserWindow | null = null
+let tray: Tray | null = null
+let isQuitting = false
+
+// ── Tray icon + background persistence ───────────────────────────────────
+
+function createTray(): void {
+  if (tray) return
+  const icon = nativeImage.createFromPath(
+    app.isPackaged
+      ? join(process.resourcesPath, 'logo.png')
+      : join(__dirname, '../../resources/logo.png')
+  ).resize({ width: 18, height: 18 })
+
+  tray = new Tray(icon)
+  tray.setToolTip('April')
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: 'Open April',
+      click: (): void => {
+        if (!mainWindow || mainWindow.isDestroyed()) {
+          mainWindow = createWindow()
+        } else {
+          mainWindow.show()
+          mainWindow.focus()
+        }
+      }
+    },
+    { type: 'separator' },
+    {
+      label: 'Quit April',
+      click: (): void => {
+        app.quit()
+      }
+    }
+  ])
+  tray.setContextMenu(contextMenu)
+
+  // Non-macOS: click tray icon to toggle window
+  if (process.platform !== 'darwin') {
+    tray.on('click', () => {
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        mainWindow = createWindow()
+      } else if (mainWindow.isVisible()) {
+        mainWindow.hide()
+      } else {
+        mainWindow.show()
+        mainWindow.focus()
+      }
+    })
+  }
+}
+
+function destroyTray(): void {
+  if (tray) {
+    tray.destroy()
+    tray = null
+  }
+}
 
 // ── Overlay window + global shortcut ─────────────────────────────────────
 
@@ -399,6 +464,9 @@ app.whenReady().then(() => {
   // Register IPC handlers once
   registerAllHandlers()
 
+  // Load and schedule any pending reminders
+  loadAndScheduleReminders()
+
   // Start any enabled MCP servers from saved settings
   const settings = getSettings()
   if (settings.mcpServers?.length) {
@@ -408,7 +476,18 @@ app.whenReady().then(() => {
   mainWindow = createWindow()
   registerQuickPromptShortcut()
 
+  // Create tray if running in background
+  if (settings.runInBackground) createTray()
+
   ipcMain.on('settings:hotkeyChanged', () => registerQuickPromptShortcut())
+  ipcMain.on('settings:backgroundChanged', () => {
+    const s = getSyncedSettings()
+    if (s.runInBackground) {
+      createTray()
+    } else {
+      destroyTray()
+    }
+  })
 
   ipcMain.on('overlay:forwardChunk', (_event, data: unknown) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -449,6 +528,7 @@ app.whenReady().then(() => {
 })
 
 app.on('before-quit', () => {
+  isQuitting = true
   stopWatching()
   mcpManager.stopAll()
 })
@@ -458,6 +538,8 @@ app.on('will-quit', () => {
 })
 
 app.on('window-all-closed', () => {
+  const settings = getSyncedSettings()
+  if (settings.runInBackground) return
   if (process.platform !== 'darwin') {
     app.quit()
   }

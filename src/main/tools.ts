@@ -1,5 +1,6 @@
 import OpenAI from 'openai'
 import { getSettings } from './store'
+import { addReminder, cancelReminder } from './reminders'
 
 export interface ToolDefinition {
   name: string
@@ -80,6 +81,33 @@ export const TOOLS: ToolDefinition[] = [
         }
       },
       required: ['prompt']
+    }
+  },
+  {
+    name: 'schedule_reminder',
+    description:
+      'Schedule a reminder notification that will appear after the specified delay. Use when the user asks to be reminded about something.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', description: 'The reminder message to display' },
+        delay_minutes: {
+          type: 'number',
+          description: 'Number of minutes from now until the reminder fires'
+        }
+      },
+      required: ['message', 'delay_minutes']
+    }
+  },
+  {
+    name: 'cancel_reminder',
+    description: 'Cancel a pending reminder by its ID.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        reminder_id: { type: 'string', description: 'The ID of the reminder to cancel' }
+      },
+      required: ['reminder_id']
     }
   }
 ]
@@ -340,6 +368,22 @@ async function generateImage(input: unknown): Promise<string> {
   return `data:image/png;base64,${b64}`
 }
 
+// ── Reminder tools ────────────────────────────────────────────────────────
+
+function scheduleReminderTool(input: unknown): string {
+  const { message, delay_minutes } = input as { message: string; delay_minutes: number }
+  const reminder = addReminder(message, delay_minutes)
+  const fireDate = new Date(reminder.fireAt)
+  const timeStr = fireDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  return `Reminder set for ${timeStr}: ${message}`
+}
+
+function cancelReminderTool(input: unknown): string {
+  const { reminder_id } = input as { reminder_id: string }
+  const ok = cancelReminder(reminder_id)
+  return ok ? 'Reminder cancelled.' : 'Reminder not found.'
+}
+
 // ── Executor ─────────────────────────────────────────────────────────────────
 
 export async function executeTool(name: string, input: unknown): Promise<string> {
@@ -365,6 +409,10 @@ export async function executeTool(name: string, input: unknown): Promise<string>
         return await getWeather(inp.location)
       case 'generate_image':
         return generateImage(input)
+      case 'schedule_reminder':
+        return scheduleReminderTool(input)
+      case 'cancel_reminder':
+        return cancelReminderTool(input)
       default:
         return `Unknown tool: ${name}`
     }
