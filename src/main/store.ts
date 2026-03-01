@@ -52,6 +52,7 @@ const syncedDefaults: SyncedSettings = {
   userLocation: '',
   userBio: '',
   mcpServers: [],
+  memories: [],
   quickPromptHotkey: 'CmdOrCtrl+Shift+Space',
   runInBackground: true,
   ntfyTopic: ''

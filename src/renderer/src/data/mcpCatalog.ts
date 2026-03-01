@@ -29,14 +29,6 @@ export const MCP_CATALOG: MCPCatalogEntry[] = [
     params: [{ id: 'path', label: 'Directory to allow access to', placeholder: '/Users/you/Documents', type: 'text' }]
   },
   {
-    id: 'memory',
-    name: 'Memory',
-    category: 'productivity',
-    description: 'Persistent key-value memory that survives across conversations.',
-    command: 'npx',
-    args: ['-y', '@modelcontextprotocol/server-memory']
-  },
-  {
     id: 'github',
     name: 'GitHub',
     category: 'dev',

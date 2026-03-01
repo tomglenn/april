@@ -181,6 +181,7 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
       userLocation: '',
       userBio: '',
       mcpServers: [],
+      memories: [],
       dataFolder: '',
       quickPromptHotkey: 'CmdOrCtrl+Shift+Space',
       runInBackground: true,
@@ -523,6 +524,34 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
                       </button>
                     ))}
                   </div>
+                </div>
+
+                <div className="mt-5">
+                  <Label>Memories</Label>
+                  {(form.memories ?? []).length === 0 ? (
+                    <p className="text-xs" style={{ color: 'var(--muted)' }}>
+                      No memories yet. April will save things she learns about you during conversations.
+                    </p>
+                  ) : (
+                    <div className="overflow-y-auto space-y-1" style={{ maxHeight: '12rem' }}>
+                      {(form.memories ?? []).map((m) => (
+                        <div
+                          key={m.id}
+                          className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-md"
+                          style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
+                        >
+                          <span className="text-xs truncate" style={{ color: 'var(--text)' }}>{m.content}</span>
+                          <button
+                            onClick={() => setForm((f) => ({ ...f, memories: (f.memories ?? []).filter((x) => x.id !== m.id) }))}
+                            className="shrink-0 hover:opacity-80"
+                            style={{ color: 'var(--muted)' }}
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </>
             )}

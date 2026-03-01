@@ -57,6 +57,12 @@ export interface Reminder {
   createdAt: number
 }
 
+export interface Memory {
+  id: string
+  content: string
+  createdAt: number
+}
+
 // Settings stored in {dataFolder}/config.json (synced across devices)
 export interface SyncedSettings {
   defaultProvider: Provider
@@ -67,6 +73,7 @@ export interface SyncedSettings {
   userLocation: string
   userBio: string
   mcpServers: MCPServerConfig[]
+  memories: Memory[]
   quickPromptHotkey: string
   runInBackground: boolean
   ntfyTopic: string

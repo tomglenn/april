@@ -15,9 +15,9 @@ A personal AI assistant for your desktop. Chat with Claude, GPT, or local models
   - Weather forecasts (current + 4-day)
   - Image generation via GPT-Image-1 (requires OpenAI key)
   - Reminders — "remind me in 30 minutes to check the oven" (optional [ntfy.sh](https://ntfy.sh) push notifications)
+  - Memory — April remembers facts about you across conversations (stored locally, manageable in Settings)
 - **MCP server support** — connect any [Model Context Protocol](https://modelcontextprotocol.io) server via the built-in catalog or add your own. Catalog includes:
   - **Filesystem** — read, write, and search files on your computer
-  - **Memory** — persistent key-value memory across conversations
   - **GitHub** — search repos, manage issues and PRs
   - **Brave Search** — web search via official API with structured results
   - **SQLite** — query and modify local databases with natural language

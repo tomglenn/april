@@ -1,5 +1,6 @@
 import OpenAI from 'openai'
-import { getSettings } from './store'
+import { BrowserWindow } from 'electron'
+import { getSettings, getSyncedSettings, setSyncedSettings } from './store'
 import { addReminder, cancelReminder } from './reminders'
 
 export interface ToolDefinition {
@@ -108,6 +109,29 @@ export const TOOLS: ToolDefinition[] = [
         reminder_id: { type: 'string', description: 'The ID of the reminder to cancel' }
       },
       required: ['reminder_id']
+    }
+  },
+  {
+    name: 'save_memory',
+    description:
+      'Save a memory about the user for future conversations. Store atomic facts — one concept per memory.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        content: { type: 'string', description: 'The fact or preference to remember' }
+      },
+      required: ['content']
+    }
+  },
+  {
+    name: 'delete_memory',
+    description: 'Delete a previously saved memory by its ID.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'The ID of the memory to delete' }
+      },
+      required: ['id']
     }
   }
 ]
@@ -384,6 +408,34 @@ function cancelReminderTool(input: unknown): string {
   return ok ? 'Reminder cancelled.' : 'Reminder not found.'
 }
 
+// ── Memory tools ──────────────────────────────────────────────────────────
+
+function notifySettingsChanged(): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send('sync:changed')
+  }
+}
+
+function saveMemoryTool(input: unknown): string {
+  const { content } = input as { content: string }
+  const synced = getSyncedSettings()
+  const memory = { id: crypto.randomUUID(), content, createdAt: Date.now() }
+  setSyncedSettings({ memories: [...(synced.memories ?? []), memory] })
+  notifySettingsChanged()
+  return `Memory saved: "${content}"`
+}
+
+function deleteMemoryTool(input: unknown): string {
+  const { id } = input as { id: string }
+  const synced = getSyncedSettings()
+  const before = (synced.memories ?? []).length
+  const filtered = (synced.memories ?? []).filter((m) => m.id !== id)
+  if (filtered.length === before) return 'Memory not found.'
+  setSyncedSettings({ memories: filtered })
+  notifySettingsChanged()
+  return 'Memory deleted.'
+}
+
 // ── Executor ─────────────────────────────────────────────────────────────────
 
 export async function executeTool(name: string, input: unknown): Promise<string> {
@@ -413,6 +465,10 @@ export async function executeTool(name: string, input: unknown): Promise<string>
         return scheduleReminderTool(input)
       case 'cancel_reminder':
         return cancelReminderTool(input)
+      case 'save_memory':
+        return saveMemoryTool(input)
+      case 'delete_memory':
+        return deleteMemoryTool(input)
       default:
         return `Unknown tool: ${name}`
     }

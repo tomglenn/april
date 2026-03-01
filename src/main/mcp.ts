@@ -1,5 +1,4 @@
 import { spawn, ChildProcess } from 'child_process'
-import { join } from 'path'
 import { getDataFolder, ensureDataFolderExists } from './store'
 import type { MCPServerConfig } from '../renderer/src/types'
 import type { ToolDefinition } from './tools'
@@ -43,10 +42,6 @@ class MCPClient {
         this.proc = spawn(this.config.command, this.config.args, {
           env: {
             ...process.env,
-            // Let MCP servers know where the user's data lives.
-            // MEMORY_FILE_PATH: used by @modelcontextprotocol/server-memory
-            MEMORY_FILE_PATH: join(dataDir, 'memory.jsonl'),
-            // User-configured env overrides anything above
             ...this.config.env
           },
           cwd: dataDir,

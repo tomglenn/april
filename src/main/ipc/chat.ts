@@ -171,10 +171,6 @@ function messagesToOpenAIFormat(messages: Message[]): OpenAI.ChatCompletionMessa
 
 // ── System prompt helper ──────────────────────────────────────────────────────
 
-function hasMemoryServer(): boolean {
-  return mcpManager.getToolDefinitions().some((t) => t.name.endsWith('__read_graph'))
-}
-
 function buildSystemPrompt(raw: string, settings: Settings): string {
   const date = new Date().toLocaleDateString('en-GB', {
     weekday: 'long',
@@ -192,13 +188,18 @@ function buildSystemPrompt(raw: string, settings: Settings): string {
     prompt += '\n\n## About the user\n' + parts.join(' ')
   }
 
-  if (hasMemoryServer()) {
-    prompt += `\n\n## Memory
-You have access to a persistent memory store via MCP tools (read_graph, search_nodes, create_entities, create_relations, etc.).
-- At the start of every conversation, call read_graph to load what you know about the user.
-- When the user shares personal details, preferences, or important facts, proactively store them using create_entities and create_relations.
-- When answering questions that might relate to previously stored information, search your memory first.`
+  const memories = settings.memories ?? []
+  if (memories.length > 0) {
+    prompt += '\n\n## Your memories about the user\n'
+    prompt += memories.map((m) => `- ${m.content} [id: ${m.id}]`).join('\n')
   }
+
+  prompt += `\n\n## Memory
+You have persistent memory across conversations.${memories.length > 0 ? ' Your current memories are listed above.' : ''}
+- When the user shares personal details, preferences, or important facts, proactively save them using the save_memory tool.
+- Store atomic facts — one concept per memory. Prefer updating (delete old + save new) over duplicating.
+- When the user asks you to forget something, use delete_memory with the relevant ID.
+- Don't mention your memory system unless the user asks about it.`
 
   return prompt
 }
