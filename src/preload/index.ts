@@ -33,6 +33,8 @@ const api = {
   },
   abortMessage: (conversationId: string): void =>
     ipcRenderer.send('chat:abort', conversationId),
+  forwardChunk: (data: ChunkData): void =>
+    ipcRenderer.send('overlay:forwardChunk', data),
 
   // Conversations
   listConversations: (): Promise<Conversation[]> =>

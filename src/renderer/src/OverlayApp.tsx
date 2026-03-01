@@ -42,6 +42,8 @@ export function OverlayApp(): JSX.Element {
   const generationRef = useRef(0)
   // Keep a ref to the active chunk handler so reset can unregister it
   const activeChunkHandlerRef = useRef<((data: ChunkData) => void) | null>(null)
+  // When set, chunks are forwarded to the main window for this conversation ID
+  const forwardToConvIdRef = useRef<string | null>(null)
 
   const handleSend = useCallback(async () => {
     const text = input.trim()
@@ -65,8 +67,17 @@ export function OverlayApp(): JSX.Element {
     let currentTextIdx = -1
 
     const handleChunk = (data: ChunkData): void => {
-      if (generationRef.current !== gen) return
       if (data.conversationId && data.conversationId !== CONV_ID) return
+
+      // Forward to main window if handoff is active (before generation check
+      // so forwarding survives even after overlay UI is reset)
+      const forwardId = forwardToConvIdRef.current
+      if (forwardId) {
+        window.api.forwardChunk({ ...data, conversationId: forwardId })
+        return
+      }
+
+      if (generationRef.current !== gen) return
 
       if (data.type === 'text_delta' && data.text) {
         if (currentTextIdx === -1) {
@@ -102,12 +113,30 @@ export function OverlayApp(): JSX.Element {
         provider: settings.defaultProvider,
         enableThinking: false
       })
-      // Only commit result if this send hasn't been superseded by a reset
       if (result && generationRef.current === gen) {
-        setMessages((prev) => [...prev, { ...result, id: crypto.randomUUID() }])
+        const forwardId = forwardToConvIdRef.current
+        if (forwardId) {
+          // Stream finished while forwarding — persist final response to the real conversation
+          try {
+            const conv = await window.api.getConversation(forwardId)
+            if (conv) {
+              const lastMsg = conv.messages[conv.messages.length - 1]
+              if (lastMsg?.role === 'assistant') {
+                lastMsg.blocks = result.blocks
+              } else {
+                conv.messages.push({ ...result, id: crypto.randomUUID() })
+              }
+              conv.updatedAt = Date.now()
+              await window.api.updateConversation(conv)
+            }
+          } catch { /* non-critical */ }
+          forwardToConvIdRef.current = null
+        } else {
+          setMessages((prev) => [...prev, { ...result, id: crypto.randomUUID() }])
+        }
       }
     } catch {
-      if (generationRef.current === gen) {
+      if (generationRef.current === gen && !forwardToConvIdRef.current) {
         const errMsg: Message = {
           id: crypto.randomUUID(),
           role: 'assistant',
@@ -116,6 +145,7 @@ export function OverlayApp(): JSX.Element {
         }
         setMessages((prev) => [...prev, errMsg])
       }
+      forwardToConvIdRef.current = null
     } finally {
       window.api.offChunk(handleChunk)
       if (activeChunkHandlerRef.current === handleChunk) {
@@ -139,15 +169,7 @@ export function OverlayApp(): JSX.Element {
       return
     }
 
-    // Abort any in-flight stream and capture partial response
-    if (isStreaming) {
-      generationRef.current += 1
-      if (activeChunkHandlerRef.current) {
-        window.api.offChunk(activeChunkHandlerRef.current)
-        activeChunkHandlerRef.current = null
-      }
-      window.api.abortMessage(CONV_ID)
-    }
+    const wasStreaming = isStreaming
 
     // Snapshot: committed messages + any partial streaming response
     const partialBlocks = streamingBlocks.filter((b) => b.type === 'text')
@@ -160,6 +182,11 @@ export function OverlayApp(): JSX.Element {
       conv.messages = allMessages
       conv.updatedAt = Date.now()
       await window.api.updateConversation(conv)
+
+      // If streaming, set up chunk forwarding so the main window continues receiving
+      if (wasStreaming) {
+        forwardToConvIdRef.current = conv.id
+      }
 
       // Auto-title in the background
       const firstUserText = messages.find((m) => m.role === 'user')?.blocks
@@ -181,7 +208,7 @@ export function OverlayApp(): JSX.Element {
 
       window.api.openInApp(conv.id)
 
-      // Reset overlay to clean state
+      // Reset overlay visual state (stream continues in background for forwarding)
       setMessages([])
       setStreamingBlocks([])
       setIsStreaming(false)
@@ -195,6 +222,8 @@ export function OverlayApp(): JSX.Element {
   const handleReset = useCallback(() => {
     // Bump generation so the in-flight send discards its results
     generationRef.current += 1
+    // Stop forwarding
+    forwardToConvIdRef.current = null
     // Unregister the active chunk handler immediately
     if (activeChunkHandlerRef.current) {
       window.api.offChunk(activeChunkHandlerRef.current)

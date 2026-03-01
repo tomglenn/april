@@ -410,6 +410,12 @@ app.whenReady().then(() => {
 
   ipcMain.on('settings:hotkeyChanged', () => registerQuickPromptShortcut())
 
+  ipcMain.on('overlay:forwardChunk', (_event, data: unknown) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('chat:chunk', data)
+    }
+  })
+
   ipcMain.on('overlay:openInApp', (_event, conversationId: string) => {
     if (!mainWindow || mainWindow.isDestroyed()) {
       mainWindow = createWindow()

@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Sidebar } from './components/Sidebar'
 import { ConversationView } from './components/ConversationView'
 import { SettingsModal } from './components/SettingsModal'
 import { SetupWizard } from './components/SetupWizard'
 import { useConversationsStore } from './stores/conversations'
 import { useSettingsStore } from './stores/settings'
+import type { ChunkData } from '../../main/ipc/chat'
 
 export default function App(): JSX.Element {
   const { load: loadConversations, createNew, setActiveId } = useConversationsStore()
@@ -16,13 +17,63 @@ export default function App(): JSX.Element {
     loadConversations()
   }, [])
 
-  // Listen for overlay "Open in April" requests
+  // Listen for overlay "Open in April" requests + forwarded stream chunks
+  const forwardedChunkRef = useRef<((data: ChunkData) => void) | null>(null)
+
   useEffect(() => {
     const handler = (id: string): void => {
       loadConversations().then(() => setActiveId(id))
+
+      // Clean up any previous forwarded stream listener
+      if (forwardedChunkRef.current) {
+        window.api.offChunk(forwardedChunkRef.current)
+        forwardedChunkRef.current = null
+      }
+
+      // Listen for forwarded chunks from the overlay's ongoing stream
+      const chunkHandler = (data: ChunkData): void => {
+        if (data.conversationId !== id) return
+
+        if (data.type === 'text_delta' && data.text) {
+          const state = useConversationsStore.getState()
+          const conv = state.conversations.find((c) => c.id === id)
+          if (!conv) return
+          const lastMsg = conv.messages[conv.messages.length - 1]
+          if (lastMsg?.role !== 'assistant') return
+
+          state.updateMessageById(id, lastMsg.id, (msg) => {
+            const blocks = [...msg.blocks]
+            const lastTextIdx = blocks.reduce(
+              (acc, b, i) => (b.type === 'text' ? i : acc), -1
+            )
+            if (lastTextIdx >= 0) {
+              const tb = blocks[lastTextIdx] as { type: 'text'; text: string }
+              blocks[lastTextIdx] = { ...tb, text: tb.text + data.text! }
+            }
+            return { ...msg, blocks }
+          })
+        } else if (data.type === 'done' || data.type === 'aborted' || data.type === 'error') {
+          // Persist final state and clean up
+          const state = useConversationsStore.getState()
+          const conv = state.conversations.find((c) => c.id === id)
+          if (conv) window.api.updateConversation(conv).catch(() => {})
+          window.api.offChunk(chunkHandler)
+          if (forwardedChunkRef.current === chunkHandler) {
+            forwardedChunkRef.current = null
+          }
+        }
+      }
+      forwardedChunkRef.current = chunkHandler
+      window.api.onChunk(chunkHandler)
     }
     window.api.onOpenConversation(handler)
-    return () => window.api.offOpenConversation(handler)
+    return () => {
+      window.api.offOpenConversation(handler)
+      if (forwardedChunkRef.current) {
+        window.api.offChunk(forwardedChunkRef.current)
+        forwardedChunkRef.current = null
+      }
+    }
   }, [loadConversations, setActiveId])
 
   useEffect(() => {

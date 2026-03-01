@@ -87,6 +87,7 @@ declare global {
       setSettings: (s: Partial<Settings>) => Promise<Settings>
       listModels: (provider: string) => Promise<string[]>
       abortMessage: (conversationId: string) => void
+      forwardChunk: (data: import('../../../main/ipc/chat').ChunkData) => void
       getMcpStatus: () => Promise<import('../../../main/mcp').MCPServerStatus[]>
       getDataFolder: () => Promise<string>
       pickDataFolder: () => Promise<string | null>
