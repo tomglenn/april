@@ -112,9 +112,11 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
       userName: '',
       userLocation: '',
       userBio: '',
-      mcpServers: []
+      mcpServers: [],
+      dataFolder: ''
     }
   )
+  const [dataFolder, setDataFolder] = useState('')
   const [models, setModels] = useState<string[]>([])
   const [modelInputFailed, setModelInputFailed] = useState(false)
   const [mcpStatus, setMcpStatus] = useState<MCPServerStatus[]>([])
@@ -132,6 +134,10 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
       setArgsText({})
     }
   }, [settings])
+
+  useEffect(() => {
+    window.api.getDataFolder().then(setDataFolder).catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (tab !== 'advanced') return
@@ -449,6 +455,33 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
             {/* ── Advanced ── */}
             {tab === 'advanced' && (
               <>
+                {/* Data Folder */}
+                <div className="mb-5">
+                  <Label>Data Folder</Label>
+                  <p className="text-xs mb-2" style={{ color: 'var(--muted)' }}>
+                    Conversations and settings are stored here. Point to an iCloud Drive or Dropbox folder to sync across devices.
+                  </p>
+                  <div className="flex gap-2">
+                    <div
+                      className="flex-1 px-3 py-2 rounded-md text-xs font-mono truncate"
+                      style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
+                      title={dataFolder}
+                    >
+                      {dataFolder || 'Loading...'}
+                    </div>
+                    <button
+                      onClick={async () => {
+                        const picked = await window.api.pickDataFolder()
+                        if (picked) setDataFolder(picked)
+                      }}
+                      className="px-3 py-2 rounded-md text-xs transition-colors hover:opacity-80 shrink-0"
+                      style={{ color: 'var(--accent)', background: 'rgba(59,130,246,0.08)' }}
+                    >
+                      Change...
+                    </button>
+                  </div>
+                </div>
+
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <Label>MCP Servers</Label>

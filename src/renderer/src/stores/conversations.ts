@@ -116,7 +116,7 @@ export const useConversationsStore = create<ConversationsState>((set, get) => ({
   createNew: async () => {
     const conv = await window.api.createConversation()
     get().addConversation(conv)
-    set({ activeId: conv.id })
+    get().setActiveId(conv.id)
     return conv
   },
 
@@ -135,3 +135,27 @@ export const useConversationsStore = create<ConversationsState>((set, get) => ({
     if (fresh) get().updateConversation({ ...fresh, title })
   }
 }))
+
+// Listen for external sync changes (e.g. iCloud/Dropbox updated a file).
+// Reload conversations but preserve the current activeId — the user may be
+// mid-conversation and we don't want to yank them away.
+if (typeof window !== 'undefined' && window.api?.onSyncChanged) {
+  window.api.onSyncChanged(async () => {
+    const { activeId } = useConversationsStore.getState()
+    try {
+      const convs = await window.api.listConversations()
+      const cleaned = convs.map((c) => ({
+        ...c,
+        messages: c.messages.filter((m) => !(m.role === 'assistant' && m.blocks.length === 0))
+      }))
+      // Keep activeId unless that conversation was deleted externally
+      const stillExists = activeId && cleaned.find((c) => c.id === activeId)
+      useConversationsStore.setState({
+        conversations: cleaned,
+        activeId: stillExists ? activeId : null
+      })
+    } catch {
+      // ignore
+    }
+  })
+}

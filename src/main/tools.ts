@@ -1,6 +1,5 @@
 import OpenAI from 'openai'
-import { store } from './store'
-import type { Settings } from '../renderer/src/types'
+import { getSettings } from './store'
 
 export interface ToolDefinition {
   name: string
@@ -317,7 +316,7 @@ async function generateImage(input: unknown): Promise<string> {
     transparent = false
   } = input as { prompt: string; size?: string; quality?: string; transparent?: boolean }
 
-  const settings = store.get('settings') as Settings
+  const settings = getSettings()
   if (!settings.openaiApiKey) {
     return 'Tool error: An OpenAI API key is required for image generation. Please add yours in Settings.'
   }
@@ -346,9 +345,13 @@ async function generateImage(input: unknown): Promise<string> {
 export async function executeTool(name: string, input: unknown): Promise<string> {
   // MCP tools are namespaced as "mcp__<serverName>__<toolName>"
   if (name.startsWith('mcp__')) {
-    // Lazy import to avoid circular dependency at module load time
-    const { mcpManager } = await import('./mcp')
-    return mcpManager.callTool(name, input)
+    try {
+      // Lazy import to avoid circular dependency at module load time
+      const { mcpManager } = await import('./mcp')
+      return await mcpManager.callTool(name, input)
+    } catch (err) {
+      return `Tool error: ${err instanceof Error ? err.message : String(err)}`
+    }
   }
 
   const inp = input as Record<string, string>

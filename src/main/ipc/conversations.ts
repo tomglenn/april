@@ -1,16 +1,20 @@
 import { ipcMain } from 'electron'
 import { v4 as uuidv4 } from 'uuid'
-import { store } from '../store'
+import {
+  listConversations,
+  getConversation,
+  saveConversation,
+  deleteConversation
+} from '../store'
 import type { Conversation } from '../../renderer/src/types'
 
 export function registerConversationHandlers(): void {
   ipcMain.handle('conversations:list', () => {
-    return store.get('conversations') as Conversation[]
+    return listConversations()
   })
 
   ipcMain.handle('conversations:get', (_, id: string) => {
-    const conversations = store.get('conversations') as Conversation[]
-    return conversations.find((c) => c.id === id) ?? null
+    return getConversation(id)
   })
 
   ipcMain.handle('conversations:create', () => {
@@ -22,26 +26,18 @@ export function registerConversationHandlers(): void {
       messages: [],
       mcpServers: []
     }
-    const conversations = store.get('conversations') as Conversation[]
-    store.set('conversations', [newConv, ...conversations])
+    saveConversation(newConv)
     return newConv
   })
 
   ipcMain.handle('conversations:update', (_, conv: Conversation) => {
-    const conversations = store.get('conversations') as Conversation[]
-    const idx = conversations.findIndex((c) => c.id === conv.id)
-    if (idx === -1) return null
     const updated = { ...conv, updatedAt: Date.now() }
-    store.set('conversations', conversations.map((c, i) => (i === idx ? updated : c)))
+    saveConversation(updated)
     return updated
   })
 
   ipcMain.handle('conversations:delete', (_, id: string) => {
-    const conversations = store.get('conversations') as Conversation[]
-    store.set(
-      'conversations',
-      conversations.filter((c) => c.id !== id)
-    )
+    deleteConversation(id)
     return true
   })
 }

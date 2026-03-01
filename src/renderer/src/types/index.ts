@@ -40,20 +40,30 @@ export interface MCPServerConfig {
   enabled: boolean
 }
 
-export interface Settings {
+// Settings stored locally (never synced — API keys, window bounds, etc.)
+export interface LocalSettings {
   anthropicApiKey: string
   openaiApiKey: string
   ollamaBaseUrl: string
+  setupCompleted: boolean
+  dataFolder: string // path to the synced data folder
+  windowBounds?: { x: number; y: number; width: number; height: number }
+}
+
+// Settings stored in {dataFolder}/config.json (synced across devices)
+export interface SyncedSettings {
   defaultProvider: Provider
   defaultModel: string
   theme: 'dark' | 'light' | 'system'
   systemPrompt: string
-  setupCompleted: boolean
   userName: string
   userLocation: string
   userBio: string
   mcpServers: MCPServerConfig[]
 }
+
+// Combined view for the renderer — it doesn't need to know about the split
+export interface Settings extends LocalSettings, SyncedSettings {}
 
 // Extend window for the API bridge
 declare global {
@@ -77,6 +87,10 @@ declare global {
       listModels: (provider: string) => Promise<string[]>
       abortMessage: (conversationId: string) => void
       getMcpStatus: () => Promise<import('../../../main/mcp').MCPServerStatus[]>
+      getDataFolder: () => Promise<string>
+      pickDataFolder: () => Promise<string | null>
+      onSyncChanged: (cb: () => void) => void
+      offSyncChanged: (cb: () => void) => void
     }
   }
 }

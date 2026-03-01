@@ -7,6 +7,7 @@ import type { MCPServerStatus } from '../main/mcp'
 // We store the wrapper so onChunk/offChunk use the same reference.
 type ChunkWrapper = Parameters<typeof ipcRenderer.on>[1]
 const chunkListenerMap = new Map<(data: ChunkData) => void, ChunkWrapper>()
+const syncListenerMap = new Map<() => void, ChunkWrapper>()
 
 const api = {
   // Chat
@@ -48,6 +49,24 @@ const api = {
   getSettings: (): Promise<Settings> => ipcRenderer.invoke('settings:get'),
   setSettings: (s: Partial<Settings>): Promise<Settings> =>
     ipcRenderer.invoke('settings:set', s),
+
+  // Data folder
+  getDataFolder: (): Promise<string> => ipcRenderer.invoke('settings:getDataFolder'),
+  pickDataFolder: (): Promise<string | null> => ipcRenderer.invoke('settings:pickDataFolder'),
+
+  // Sync events
+  onSyncChanged: (cb: () => void): void => {
+    const wrapper: ChunkWrapper = () => cb()
+    syncListenerMap.set(cb, wrapper)
+    ipcRenderer.on('sync:changed', wrapper)
+  },
+  offSyncChanged: (cb: () => void): void => {
+    const wrapper = syncListenerMap.get(cb)
+    if (wrapper) {
+      ipcRenderer.off('sync:changed', wrapper)
+      syncListenerMap.delete(cb)
+    }
+  },
 
   // Providers
   listModels: (provider: string): Promise<string[]> =>

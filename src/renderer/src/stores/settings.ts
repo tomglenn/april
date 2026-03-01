@@ -48,3 +48,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     }
   }
 }))
+
+// Reload settings when external sync changes are detected
+if (typeof window !== 'undefined' && window.api?.onSyncChanged) {
+  window.api.onSyncChanged(() => {
+    useSettingsStore.getState().load()
+  })
+}

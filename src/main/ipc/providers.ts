@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
-import { store } from '../store'
-import type { Provider, Settings } from '../../renderer/src/types'
+import { getSettings } from '../store'
+import type { Provider } from '../../renderer/src/types'
 
 const ANTHROPIC_MODELS = [
   'claude-opus-4-6',
@@ -33,7 +33,7 @@ export function registerProviderHandlers(): void {
     }
 
     if (provider === 'ollama') {
-      const settings = store.get('settings') as Settings
+      const settings = getSettings()
       const baseUrl = settings.ollamaBaseUrl || 'http://localhost:11434'
       try {
         const res = await fetch(`${baseUrl}/api/tags`)

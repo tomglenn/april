@@ -2,7 +2,7 @@ import { ipcMain } from 'electron'
 import { setMaxListeners } from 'events'
 import Anthropic from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
-import { store } from '../store'
+import { getSettings } from '../store'
 import { TOOLS, executeTool } from '../tools'
 import { mcpManager } from '../mcp'
 import type { ToolDefinition } from '../tools'
@@ -171,6 +171,10 @@ function messagesToOpenAIFormat(messages: Message[]): OpenAI.ChatCompletionMessa
 
 // ── System prompt helper ──────────────────────────────────────────────────────
 
+function hasMemoryServer(): boolean {
+  return mcpManager.getToolDefinitions().some((t) => t.name.endsWith('__read_graph'))
+}
+
 function buildSystemPrompt(raw: string, settings: Settings): string {
   const date = new Date().toLocaleDateString('en-GB', {
     weekday: 'long',
@@ -186,6 +190,14 @@ function buildSystemPrompt(raw: string, settings: Settings): string {
   if (settings.userBio) parts.push(settings.userBio)
   if (parts.length > 0) {
     prompt += '\n\n## About the user\n' + parts.join(' ')
+  }
+
+  if (hasMemoryServer()) {
+    prompt += `\n\n## Memory
+You have access to a persistent memory store via MCP tools (read_graph, search_nodes, create_entities, create_relations, etc.).
+- At the start of every conversation, call read_graph to load what you know about the user.
+- When the user shares personal details, preferences, or important facts, proactively store them using create_entities and create_relations.
+- When answering questions that might relate to previously stored information, search your memory first.`
   }
 
   return prompt
@@ -445,7 +457,7 @@ async function runOpenAILoop(
 
 export function registerChatHandlers(): void {
   ipcMain.handle('chat:send', async (event, payload: SendMessagePayload) => {
-    const settings = store.get('settings') as Settings
+    const settings = getSettings()
     const sender = event.sender
     const systemPrompt = buildSystemPrompt(settings.systemPrompt || '', settings)
 
@@ -504,16 +516,16 @@ export function registerChatHandlers(): void {
       if (!controller.signal.aborted) {
         const error = err instanceof Error ? err.message : String(err)
         sendChunk({ type: 'error', error })
-        throw err
       }
     } finally {
       abortControllers.delete(payload.conversationId)
-    }
-
-    if (controller.signal.aborted) {
-      sendChunk({ type: 'aborted', finalMessage: finalMsg ?? undefined })
-    } else {
-      sendChunk({ type: 'done', finalMessage: finalMsg ?? undefined })
+      // Always send done/aborted so the renderer clears streaming state,
+      // even if an error was already sent above.
+      if (controller.signal.aborted) {
+        sendChunk({ type: 'aborted', finalMessage: finalMsg ?? undefined })
+      } else {
+        sendChunk({ type: 'done', finalMessage: finalMsg ?? undefined })
+      }
     }
 
     return finalMsg
@@ -526,7 +538,7 @@ export function registerChatHandlers(): void {
   ipcMain.handle(
     'chat:title',
     async (_, { provider, model, firstMessage }: { provider: string; model: string; firstMessage: string }) => {
-      const settings = store.get('settings') as Settings
+      const settings = getSettings()
       try {
         if (provider === 'anthropic') {
           const anthropic = new Anthropic({ apiKey: settings.anthropicApiKey })
