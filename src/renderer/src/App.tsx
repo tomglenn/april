@@ -30,16 +30,29 @@ export default function App(): JSX.Element {
         forwardedChunkRef.current = null
       }
 
-      // Listen for forwarded chunks from the overlay's ongoing stream
+      // Listen for forwarded chunks from the overlay's ongoing stream.
+      // Use an accumulator + replace (not append) to be robust against
+      // store resets from loadConversations or sync watcher.
+      let accumulated = ''
+      let baseText: string | null = null
+
       const chunkHandler = (data: ChunkData): void => {
         if (data.conversationId !== id) return
 
         if (data.type === 'text_delta' && data.text) {
+          accumulated += data.text
+
           const state = useConversationsStore.getState()
           const conv = state.conversations.find((c) => c.id === id)
           if (!conv) return
           const lastMsg = conv.messages[conv.messages.length - 1]
           if (lastMsg?.role !== 'assistant') return
+
+          // Capture base text once from the saved partial message
+          if (baseText === null) {
+            const tb = lastMsg.blocks.find((b) => b.type === 'text')
+            baseText = tb ? (tb as { type: 'text'; text: string }).text : ''
+          }
 
           state.updateMessageById(id, lastMsg.id, (msg) => {
             const blocks = [...msg.blocks]
@@ -47,8 +60,7 @@ export default function App(): JSX.Element {
               (acc, b, i) => (b.type === 'text' ? i : acc), -1
             )
             if (lastTextIdx >= 0) {
-              const tb = blocks[lastTextIdx] as { type: 'text'; text: string }
-              blocks[lastTextIdx] = { ...tb, text: tb.text + data.text! }
+              blocks[lastTextIdx] = { type: 'text', text: baseText + accumulated }
             }
             return { ...msg, blocks }
           })
