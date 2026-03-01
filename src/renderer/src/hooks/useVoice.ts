@@ -1,10 +1,15 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 
+export interface SpeakingState {
+  id: string
+  phase: 'generating' | 'playing'
+}
+
 export interface VoiceState {
   isRecording: boolean
   isTranscribing: boolean
   recordingSeconds: number
-  playingMessageId: string | null
+  speakingState: SpeakingState | null
   startRecording: () => void
   stopRecording: () => Promise<string | null>
   cancelRecording: () => void
@@ -16,7 +21,7 @@ export function useVoice(): VoiceState {
   const [isRecording, setIsRecording] = useState(false)
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [recordingSeconds, setRecordingSeconds] = useState(0)
-  const [playingMessageId, setPlayingMessageId] = useState<string | null>(null)
+  const [speakingState, setSpeakingState] = useState<SpeakingState | null>(null)
 
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -24,6 +29,7 @@ export function useVoice(): VoiceState {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
   const sourceRef = useRef<AudioBufferSourceNode | null>(null)
+  const requestIdRef = useRef(0)
 
   const stopMediaTracks = useCallback(() => {
     if (streamRef.current) {
@@ -110,33 +116,46 @@ export function useVoice(): VoiceState {
   }, [])
 
   const stopSpeaking = useCallback(() => {
+    requestIdRef.current++
     if (sourceRef.current) {
       try { sourceRef.current.stop() } catch { /* already stopped */ }
       sourceRef.current = null
     }
-    setPlayingMessageId(null)
+    setSpeakingState(null)
   }, [])
 
   const speak = useCallback((messageId: string, text: string) => {
-    stopSpeaking()
+    // Stop any in-flight request or playback
+    if (sourceRef.current) {
+      try { sourceRef.current.stop() } catch { /* already stopped */ }
+      sourceRef.current = null
+    }
+    const myRequestId = ++requestIdRef.current
+    setSpeakingState({ id: messageId, phase: 'generating' })
 
     window.api.synthesizeSpeech(text).then(async (arrayBuffer) => {
+      if (requestIdRef.current !== myRequestId) return
       const ctx = getAudioContext()
       const audioBuffer = await ctx.decodeAudioData(arrayBuffer)
+      if (requestIdRef.current !== myRequestId) return
       const source = ctx.createBufferSource()
       source.buffer = audioBuffer
       source.connect(ctx.destination)
       source.onended = () => {
-        sourceRef.current = null
-        setPlayingMessageId(null)
+        if (requestIdRef.current === myRequestId) {
+          sourceRef.current = null
+          setSpeakingState(null)
+        }
       }
       sourceRef.current = source
-      setPlayingMessageId(messageId)
+      setSpeakingState({ id: messageId, phase: 'playing' })
       source.start()
     }).catch(() => {
-      setPlayingMessageId(null)
+      if (requestIdRef.current === myRequestId) {
+        setSpeakingState(null)
+      }
     })
-  }, [stopSpeaking, getAudioContext])
+  }, [getAudioContext])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -150,7 +169,7 @@ export function useVoice(): VoiceState {
     isRecording,
     isTranscribing,
     recordingSeconds,
-    playingMessageId,
+    speakingState,
     startRecording,
     stopRecording,
     cancelRecording,

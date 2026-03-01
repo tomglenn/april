@@ -253,7 +253,7 @@ export function ConversationView({ onOpenSettings }: Props): JSX.Element {
                   isStreaming={isActiveStreaming && i === activeConv.messages.length - 1}
                   onRetry={msg.role === 'user' && msg.error ? () => retryMessage(msg) : undefined}
                   hasOpenAIKey={hasOpenAIKey}
-                  isPlaying={voice.playingMessageId === msg.id}
+                  voicePhase={voice.speakingState?.id === msg.id ? voice.speakingState.phase : null}
                   onSpeak={(text) => voice.speak(msg.id, text)}
                   onStopSpeaking={voice.stopSpeaking}
                 />
