@@ -139,12 +139,27 @@ export function OverlayApp(): JSX.Element {
       return
     }
 
+    // Abort any in-flight stream and capture partial response
+    if (isStreaming) {
+      generationRef.current += 1
+      if (activeChunkHandlerRef.current) {
+        window.api.offChunk(activeChunkHandlerRef.current)
+        activeChunkHandlerRef.current = null
+      }
+      window.api.abortMessage(CONV_ID)
+    }
+
+    // Snapshot: committed messages + any partial streaming response
+    const partialBlocks = streamingBlocks.filter((b) => b.type === 'text')
+    const allMessages = partialBlocks.length > 0
+      ? [...messages, { id: crypto.randomUUID(), role: 'assistant' as const, blocks: partialBlocks, model: settings?.defaultModel, provider: settings?.defaultProvider, timestamp: Date.now() }]
+      : messages
+
     try {
       const conv = await window.api.createConversation()
-      conv.messages = messages
+      conv.messages = allMessages
       conv.updatedAt = Date.now()
       await window.api.updateConversation(conv)
-      setSavedConvId(conv.id)
 
       // Auto-title in the background
       const firstUserText = messages.find((m) => m.role === 'user')?.blocks
@@ -165,10 +180,17 @@ export function OverlayApp(): JSX.Element {
       }
 
       window.api.openInApp(conv.id)
+
+      // Reset overlay to clean state
+      setMessages([])
+      setStreamingBlocks([])
+      setIsStreaming(false)
+      setInput('')
+      setSavedConvId(null)
     } catch {
       // ignore
     }
-  }, [messages, settings, savedConvId])
+  }, [messages, streamingBlocks, isStreaming, settings, savedConvId])
 
   const handleReset = useCallback(() => {
     // Bump generation so the in-flight send discards its results
