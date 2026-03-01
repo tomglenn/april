@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react'
-import { X, Plus, Trash2, Eye, EyeOff, Loader, CheckCircle, AlertCircle } from 'lucide-react'
+import { X, Plus, Trash2, Loader, CheckCircle, AlertCircle } from 'lucide-react'
 import { useSettingsStore } from '../stores/settings'
 import type { MCPServerConfig, Settings } from '../types'
 import type { MCPServerStatus } from '../../../main/mcp'
 import { MCPCatalog } from './MCPCatalog'
+import { SensitiveInput } from './SensitiveInput'
+import { useMultiProviderModels } from '../hooks/useMultiProviderModels'
+import type { Provider } from '../types'
 
 type Personality = 'professional' | 'friendly' | 'creative' | 'concise' | 'custom'
 type Tab = 'general' | 'personalisation' | 'advanced'
@@ -54,42 +57,6 @@ function Label({ children }: { children: React.ReactNode }): JSX.Element {
     <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted)' }}>
       {children}
     </label>
-  )
-}
-
-function SensitiveInput({
-  value,
-  onChange,
-  placeholder
-}: {
-  value: string
-  onChange: (v: string) => void
-  placeholder?: string
-}): JSX.Element {
-  const [show, setShow] = useState(false)
-  return (
-    <div className="relative">
-      <input
-        type={show ? 'text' : 'password'}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="w-full px-3 py-2 rounded-md text-sm outline-none"
-        style={{
-          background: 'var(--bg)',
-          border: '1px solid var(--border)',
-          color: 'var(--text)',
-          paddingRight: '2.5rem'
-        }}
-      />
-      <button
-        onClick={() => setShow((v) => !v)}
-        className="absolute right-2 top-1/2 -translate-y-1/2"
-        style={{ color: 'var(--muted)' }}
-      >
-        {show ? <EyeOff size={14} /> : <Eye size={14} />}
-      </button>
-    </div>
   )
 }
 
@@ -192,12 +159,11 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
     }
   )
   const [dataFolder, setDataFolder] = useState('')
-  const [models, setModels] = useState<string[]>([])
-  const [modelInputFailed, setModelInputFailed] = useState(false)
   const [mcpStatus, setMcpStatus] = useState<MCPServerStatus[]>([])
   const [argsText, setArgsText] = useState<Record<number, string>>({})
   const [showCatalog, setShowCatalog] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [useCustomModel, setUseCustomModel] = useState(false)
   const [personality, setPersonality] = useState<Personality | null>(() =>
     detectPersonality(settings?.systemPrompt ?? '')
   )
@@ -223,24 +189,11 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
     return () => clearInterval(id)
   }, [tab])
 
-  useEffect(() => {
-    setModels([])
-    setModelInputFailed(false)
-    if (form.defaultProvider === 'ollama') return
-    window.api
-      .listModels(form.defaultProvider)
-      .then((list) => {
-        if (list.length > 0) {
-          setModels(list)
-          if (!form.defaultModel || !list.includes(form.defaultModel)) {
-            set('defaultModel', list[0])
-          }
-        } else {
-          setModelInputFailed(true)
-        }
-      })
-      .catch(() => setModelInputFailed(true))
-  }, [form.defaultProvider])
+  const { groups, allEmpty } = useMultiProviderModels({
+    anthropicApiKey: form.anthropicApiKey,
+    openaiApiKey: form.openaiApiKey,
+    ollamaBaseUrl: form.ollamaBaseUrl
+  })
 
   const set = (key: keyof Settings, value: string): void => {
     setForm((f) => ({ ...f, [key]: value }))
@@ -331,125 +284,130 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
             {/* ── General ── */}
             {tab === 'general' && (
               <>
-                {/* Provider cards */}
-                <Label>Provider</Label>
-                <div className="flex gap-2 mb-4">
-                  {(['anthropic', 'openai', 'ollama'] as const).map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => {
-                        set('defaultProvider', p)
-                        set('defaultModel', '')
-                      }}
-                      className="flex-1 py-2 rounded-lg text-xs font-medium transition-colors"
-                      style={{
-                        background: 'var(--bg)',
-                        border: form.defaultProvider === p ? '2px solid var(--accent)' : '1px solid var(--border)',
-                        color: 'var(--text)',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {p === 'anthropic' ? 'Anthropic' : p === 'openai' ? 'OpenAI' : 'Ollama'}
-                    </button>
-                  ))}
+                {/* API Keys — always visible */}
+                <Label>Anthropic API Key</Label>
+                <div className="mb-3">
+                  <SensitiveInput
+                    value={form.anthropicApiKey}
+                    onChange={(v) => set('anthropicApiKey', v)}
+                    placeholder="sk-ant-..."
+                  />
                 </div>
 
-                {/* Contextual credential */}
-                {form.defaultProvider === 'anthropic' && (
-                  <div className="mb-4">
-                    <Label>Anthropic API Key</Label>
-                    <SensitiveInput
-                      value={form.anthropicApiKey}
-                      onChange={(v) => set('anthropicApiKey', v)}
-                      placeholder="sk-ant-..."
-                    />
-                  </div>
-                )}
-                {form.defaultProvider === 'openai' && (
-                  <div className="mb-4">
-                    <Label>OpenAI API Key</Label>
-                    <SensitiveInput
-                      value={form.openaiApiKey}
-                      onChange={(v) => set('openaiApiKey', v)}
-                      placeholder="sk-..."
-                    />
-                  </div>
-                )}
-                {form.defaultProvider === 'ollama' && (
-                  <div className="mb-4">
-                    <Label>Ollama Base URL</Label>
-                    <input
-                      type="text"
-                      value={form.ollamaBaseUrl}
-                      onChange={(e) => set('ollamaBaseUrl', e.target.value)}
-                      placeholder="http://localhost:11434"
-                      className={inputCls}
-                      style={inputStyle}
-                    />
-                  </div>
-                )}
+                <Label>OpenAI API Key</Label>
+                <p className="text-xs mb-1.5" style={{ color: 'var(--muted)', opacity: 0.6 }}>Also enables image generation and voice</p>
+                <div className="mb-3">
+                  <SensitiveInput
+                    value={form.openaiApiKey}
+                    onChange={(v) => set('openaiApiKey', v)}
+                    placeholder="sk-..."
+                  />
+                </div>
 
-                {/* Model */}
+                <Label>Ollama Base URL</Label>
                 <div className="mb-4">
-                  <Label>Model</Label>
-                  {form.defaultProvider === 'ollama' || modelInputFailed ? (
-                    <input
-                      type="text"
-                      value={form.defaultModel}
-                      onChange={(e) => set('defaultModel', e.target.value)}
-                      placeholder={form.defaultProvider === 'ollama' ? 'e.g. llama3.2, mistral, phi3' : 'Enter model name'}
-                      className={`${inputCls} font-mono`}
-                      style={inputStyle}
-                    />
-                  ) : models.length > 0 ? (
-                    <div className="relative">
-                      <select
+                  <input
+                    type="text"
+                    value={form.ollamaBaseUrl}
+                    onChange={(e) => set('ollamaBaseUrl', e.target.value)}
+                    placeholder="http://localhost:11434"
+                    className={inputCls}
+                    style={inputStyle}
+                  />
+                </div>
+
+                {/* Default Model — combined dropdown */}
+                <div className="mb-4">
+                  <Label>Default Model</Label>
+                  {!form.anthropicApiKey && !form.openaiApiKey && !form.ollamaBaseUrl ? (
+                    <div className={`${inputCls} font-mono`} style={{ ...inputStyle, color: 'var(--muted)' }}>
+                      Add an API key above to see available models
+                    </div>
+                  ) : !useCustomModel && !allEmpty ? (
+                    <>
+                      <div className="relative">
+                        <select
+                          value={form.defaultModel ? `${form.defaultProvider}:${form.defaultModel}` : ''}
+                          onChange={(e) => {
+                            const val = e.target.value
+                            if (val === '__custom__') {
+                              setUseCustomModel(true)
+                              return
+                            }
+                            const [prov, ...rest] = val.split(':')
+                            set('defaultProvider', prov)
+                            set('defaultModel', rest.join(':'))
+                          }}
+                          className={`${inputCls} font-mono appearance-none pr-8`}
+                          style={inputStyle}
+                        >
+                          <option value="" disabled>Select a model...</option>
+                          {groups
+                            .filter((g) => !g.loading && !g.failed && g.models.length > 0)
+                            .map((g) => (
+                              <optgroup key={g.provider} label={g.label}>
+                                {g.models.map((m) => (
+                                  <option key={`${g.provider}:${m}`} value={`${g.provider}:${m}`}>{m}</option>
+                                ))}
+                              </optgroup>
+                            ))}
+                          <option value="__custom__">Use a custom model...</option>
+                        </select>
+                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-base" style={{ color: 'var(--muted)' }}>▾</span>
+                      </div>
+                      {groups.some((g) => g.loading) && (
+                        <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>Loading models...</p>
+                      )}
+                    </>
+                  ) : (
+                    <div>
+                      <input
+                        type="text"
                         value={form.defaultModel}
                         onChange={(e) => set('defaultModel', e.target.value)}
-                        className={`${inputCls} font-mono appearance-none pr-8`}
+                        placeholder="e.g. claude-sonnet-4-6, gpt-4o, llama3.2"
+                        className={`${inputCls} font-mono`}
                         style={inputStyle}
-                      >
-                        {models.map((m) => (
-                          <option key={m} value={m}>{m}</option>
+                      />
+                      <div className="flex gap-2 mt-2">
+                        {(['anthropic', 'openai', 'ollama'] as Provider[]).map((p) => (
+                          <button
+                            key={p}
+                            onClick={() => set('defaultProvider', p)}
+                            className="flex-1 py-1.5 rounded-md text-xs font-medium transition-colors"
+                            style={{
+                              background: 'var(--bg)',
+                              border: form.defaultProvider === p ? '2px solid var(--accent)' : '1px solid var(--border)',
+                              color: 'var(--text)',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {p === 'anthropic' ? 'Anthropic' : p === 'openai' ? 'OpenAI' : 'Ollama'}
+                          </button>
                         ))}
-                      </select>
-                      <span className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-base" style={{ color: 'var(--muted)' }}>▾</span>
-                    </div>
-                  ) : (
-                    <div className={`${inputCls} font-mono`} style={{ ...inputStyle, color: 'var(--muted)' }}>
-                      {form.defaultModel || 'Loading models…'}
+                      </div>
+                      {!allEmpty && (
+                        <button
+                          className="text-xs mt-2"
+                          style={{ color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer' }}
+                          onClick={() => setUseCustomModel(false)}
+                        >
+                          Back to model list
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
 
-                {/* Image generation — shown for non-OpenAI providers */}
-                {form.defaultProvider !== 'openai' && (
+                {/* OpenAI Features — shown when OpenAI key is set */}
+                {form.openaiApiKey && (
                   <div
                     className="rounded-lg p-3"
                     style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
                   >
-                    <p className="text-xs font-medium mb-1" style={{ color: 'var(--text)' }}>Image Generation</p>
+                    <p className="text-xs font-medium mb-1" style={{ color: 'var(--text)' }}>OpenAI Features</p>
                     <p className="text-xs mb-3" style={{ color: 'var(--muted)' }}>
-                      April uses OpenAI to generate images regardless of your active provider. Add an OpenAI key to enable this.
-                    </p>
-                    <Label>OpenAI API Key (optional)</Label>
-                    <SensitiveInput
-                      value={form.openaiApiKey}
-                      onChange={(v) => set('openaiApiKey', v)}
-                      placeholder="sk-..."
-                    />
-                  </div>
-                )}
-
-                {/* Voice settings — shown when OpenAI key is set */}
-                {form.openaiApiKey && (
-                  <div
-                    className="rounded-lg p-3 mt-4"
-                    style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
-                  >
-                    <p className="text-xs font-medium mb-1" style={{ color: 'var(--text)' }}>Voice</p>
-                    <p className="text-xs mb-3" style={{ color: 'var(--muted)' }}>
-                      Dictate messages and hear responses read aloud. Uses OpenAI Whisper and TTS.
+                      Image generation and voice mode are enabled with your OpenAI key.
                     </p>
 
                     <label className="flex items-center justify-between cursor-pointer mb-3">

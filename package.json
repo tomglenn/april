@@ -19,7 +19,7 @@
     "build:mac": "npm run build && electron-builder --mac",
     "build:linux": "npm run build && electron-builder --linux",
     "deploy:mac": "bash scripts/install-mac.sh",
-    "clear-state": "rm -f \"$HOME/Library/Application Support/april-agent/config.json\""
+    "clear-state": "rm -rf \"$HOME/Library/Application Support/april-agent-dev\""
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.36.3",

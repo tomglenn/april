@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
-import { Check } from 'lucide-react'
+import { useState } from 'react'
+import { Check, Eye, EyeOff } from 'lucide-react'
 import { useSettingsStore } from '../stores/settings'
 import type { Provider } from '../types'
+import { useMultiProviderModels } from '../hooks/useMultiProviderModels'
 
 type Step = 1 | 2 | 3 | 4 | 5 | 'done'
 type Personality = 'professional' | 'friendly' | 'creative' | 'concise' | 'custom'
@@ -55,66 +56,91 @@ const skipBtnStyle: React.CSSProperties = {
   padding: '4px'
 }
 
+function WizardKeyInput({
+  value,
+  onChange,
+  placeholder,
+  type = 'password'
+}: {
+  value: string
+  onChange: (v: string) => void
+  placeholder: string
+  type?: 'text' | 'password'
+}): JSX.Element {
+  const [show, setShow] = useState(false)
+  if (type === 'text') {
+    return <input type="text" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} style={inputStyle} />
+  }
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        type={show ? 'text' : 'password'}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={{ ...inputStyle, paddingRight: '2.5rem' }}
+      />
+      <button
+        onClick={() => setShow((v) => !v)}
+        style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer' }}
+      >
+        {show ? <EyeOff size={14} /> : <Eye size={14} />}
+      </button>
+    </div>
+  )
+}
+
 export function SetupWizard(): JSX.Element {
   const { settings, update } = useSettingsStore()
 
   const [step, setStep] = useState<Step>(1)
-  const [provider, setProvider] = useState<Provider>(settings?.defaultProvider ?? 'anthropic')
-  const [apiKey, setApiKey] = useState('')
+  const [anthropicKey, setAnthropicKey] = useState(settings?.anthropicApiKey ?? '')
+  const [openaiKey, setOpenaiKey] = useState(settings?.openaiApiKey ?? '')
   const [ollamaUrl, setOllamaUrl] = useState(settings?.ollamaBaseUrl ?? 'http://localhost:11434')
-  const [model, setModel] = useState(settings?.defaultModel ?? '')
-  const [models, setModels] = useState<string[]>([])
-  const [modelInputFailed, setModelInputFailed] = useState(false)
-  const [enableImages, setEnableImages] = useState(false)
-  const [imageKey, setImageKey] = useState('')
+  const [selectedModel, setSelectedModel] = useState('')
+  const [selectedProvider, setSelectedProvider] = useState<Provider>('anthropic')
+  const [useCustomModel, setUseCustomModel] = useState(false)
+  const [customModelName, setCustomModelName] = useState('')
+  const [customProvider, setCustomProvider] = useState<Provider>('anthropic')
   const [userName, setUserName] = useState(settings?.userName ?? '')
   const [userLocation, setUserLocation] = useState(settings?.userLocation ?? '')
   const [userBio, setUserBio] = useState(settings?.userBio ?? '')
   const [personality, setPersonality] = useState<Personality>('friendly')
   const [customPrompt, setCustomPrompt] = useState(PERSONALITY_PROMPTS.friendly)
 
-  // Load models when provider changes in step 2 (Ollama always uses free text)
-  useEffect(() => {
-    if (step !== 2) return
-    setModels([])
-    setModelInputFailed(false)
-    if (provider === 'ollama') {
-      setModel('')
-      return
-    }
-    window.api
-      .listModels(provider)
-      .then((list) => {
-        if (list.length > 0) {
-          setModels(list)
-          if (!model || !list.includes(model)) setModel(list[0])
-        } else {
-          setModelInputFailed(true)
-        }
-      })
-      .catch(() => setModelInputFailed(true))
-  }, [provider, step])
+  const { groups, allEmpty } = useMultiProviderModels({
+    anthropicApiKey: anthropicKey,
+    openaiApiKey: openaiKey,
+    ollamaBaseUrl: ollamaUrl
+  })
+
+  const step2Valid = !!(anthropicKey.trim() || openaiKey.trim() || ollamaUrl.trim())
+
+  const step3Valid = useCustomModel
+    ? customModelName.trim().length > 0
+    : selectedModel.length > 0
+
+  const displayProvider = useCustomModel ? customProvider : selectedProvider
+  const displayModel = useCustomModel ? customModelName : selectedModel
 
   async function skipSetup(): Promise<void> {
     await update({ setupCompleted: true })
   }
 
   async function handleStep2Continue(): Promise<void> {
-    const partial: Parameters<typeof update>[0] = {
-      defaultProvider: provider,
-      defaultModel: model
-    }
-    if (provider === 'anthropic') partial.anthropicApiKey = apiKey
-    else if (provider === 'openai') partial.openaiApiKey = apiKey
-    else partial.ollamaBaseUrl = ollamaUrl
+    const partial: Parameters<typeof update>[0] = {}
+    if (anthropicKey.trim()) partial.anthropicApiKey = anthropicKey.trim()
+    if (openaiKey.trim()) partial.openaiApiKey = openaiKey.trim()
+    if (ollamaUrl.trim()) partial.ollamaBaseUrl = ollamaUrl.trim()
     await update(partial)
     setStep(3)
   }
 
   async function handleStep3Continue(): Promise<void> {
-    if (enableImages && imageKey) {
-      await update({ openaiApiKey: imageKey })
-    }
+    await update({
+      defaultProvider: displayProvider,
+      defaultModel: displayModel
+    })
     setStep(4)
   }
 
@@ -131,10 +157,19 @@ export function SetupWizard(): JSX.Element {
     setStep('done')
   }
 
-  const step2Valid =
-    provider === 'ollama' ? ollamaUrl.trim().length > 0 : apiKey.trim().length > 0
+  function handleModelSelect(value: string): void {
+    if (value === '__custom__') {
+      setUseCustomModel(true)
+      return
+    }
+    setUseCustomModel(false)
+    const [prov, ...rest] = value.split(':')
+    setSelectedProvider(prov as Provider)
+    setSelectedModel(rest.join(':'))
+  }
 
-  const providerHasOpenAiKey = !!(settings?.openaiApiKey)
+  const providerLabel = (p: Provider): string =>
+    p === 'anthropic' ? 'Anthropic' : p === 'openai' ? 'OpenAI' : 'Ollama'
 
   return (
     <div
@@ -158,7 +193,7 @@ export function SetupWizard(): JSX.Element {
           overflow: 'hidden'
         }}
       >
-        {/* Progress bar (steps 2-4) */}
+        {/* Progress bar (steps 2-5) */}
         {step !== 1 && step !== 'done' && (
           <div style={{ height: '4px', background: 'var(--border)' }}>
             <div
@@ -187,10 +222,10 @@ export function SetupWizard(): JSX.Element {
             </div>
           )}
 
-          {/* ── Step 1: Welcome ── */}
+          {/* -- Step 1: Welcome -- */}
           {step === 1 && (
             <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
-              <img src="./favicon.png" alt="April" style={{ width: '80px', height: '80px' }} />
+              <img src="./logo.png" alt="April" style={{ width: '80px', height: '80px' }} />
               <h1 style={{ fontSize: '24px', fontWeight: 600, color: 'var(--text)', margin: 0 }}>
                 Welcome to April
               </h1>
@@ -203,120 +238,51 @@ export function SetupWizard(): JSX.Element {
             </div>
           )}
 
-          {/* ── Step 2: Provider ── */}
+          {/* -- Step 2: Connect your providers -- */}
           {step === 2 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <div>
                 <h2 style={{ fontSize: '20px', fontWeight: 600, color: 'var(--text)', margin: '0 0 4px' }}>
-                  Choose your AI provider
+                  Connect your providers
                 </h2>
                 <p style={{ fontSize: '14px', color: 'var(--muted)', margin: 0 }}>
-                  Select a provider and enter your credentials.
+                  Enter credentials for any providers you'd like to use. You can always add more in Settings.
                 </p>
               </div>
 
-              {/* Provider cards */}
-              <div style={{ display: 'flex', gap: '12px' }}>
-                {(['anthropic', 'openai', 'ollama'] as Provider[]).map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => setProvider(p)}
-                    style={{
-                      flex: 1,
-                      padding: '12px 8px',
-                      borderRadius: '8px',
-                      border: provider === p ? '2px solid var(--accent)' : '1px solid var(--border)',
-                      background: 'var(--bg)',
-                      color: 'var(--text)',
-                      fontSize: '13px',
-                      fontWeight: 500,
-                      cursor: 'pointer',
-                      textAlign: 'center'
-                    }}
-                  >
-                    {p === 'anthropic' ? 'Anthropic' : p === 'openai' ? 'OpenAI' : 'Ollama'}
-                  </button>
-                ))}
-              </div>
-
-              {/* Credential input */}
-              {provider === 'anthropic' && (
-                <input
-                  type="password"
-                  placeholder="Anthropic API key (sk-ant-...)"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  style={inputStyle}
-                />
-              )}
-              {provider === 'openai' && (
-                <input
-                  type="password"
-                  placeholder="OpenAI API key (sk-...)"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  style={inputStyle}
-                />
-              )}
-              {provider === 'ollama' && (
-                <input
-                  type="text"
-                  placeholder="Ollama base URL"
-                  value={ollamaUrl}
-                  onChange={(e) => setOllamaUrl(e.target.value)}
-                  style={inputStyle}
-                />
-              )}
-
-              {/* Model picker */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '13px', color: 'var(--muted)' }}>Model</label>
-                {provider === 'ollama' ? (
-                  <input
-                    type="text"
-                    placeholder="e.g. llama3.2, mistral, phi3"
-                    value={model}
-                    onChange={(e) => setModel(e.target.value)}
-                    style={inputStyle}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', color: 'var(--muted)', marginBottom: '6px' }}>
+                    Anthropic API Key
+                  </label>
+                  <WizardKeyInput
+                    value={anthropicKey}
+                    onChange={setAnthropicKey}
+                    placeholder="sk-ant-..."
                   />
-                ) : modelInputFailed ? (
-                  <input
-                    type="text"
-                    placeholder="Enter model name"
-                    value={model}
-                    onChange={(e) => setModel(e.target.value)}
-                    style={inputStyle}
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', color: 'var(--muted)', marginBottom: '6px' }}>
+                    OpenAI API Key
+                    <span style={{ opacity: 0.6, fontWeight: 400 }}> — also enables image generation and voice</span>
+                  </label>
+                  <WizardKeyInput
+                    value={openaiKey}
+                    onChange={setOpenaiKey}
+                    placeholder="sk-..."
                   />
-                ) : models.length > 0 ? (
-                  <div style={{ position: 'relative' }}>
-                    <select
-                      value={model}
-                      onChange={(e) => setModel(e.target.value)}
-                      style={{ ...inputStyle, appearance: 'none', paddingRight: '2rem', cursor: 'pointer' }}
-                    >
-                      {models.map((m) => (
-                        <option key={m} value={m}>{m}</option>
-                      ))}
-                    </select>
-                    <span
-                      style={{
-                        position: 'absolute',
-                        right: '10px',
-                        top: '50%',
-                        transform: 'translateY(-50%)',
-                        pointerEvents: 'none',
-                        color: 'var(--muted)',
-                        fontSize: '16px'
-                      }}
-                    >
-                      ▾
-                    </span>
-                  </div>
-                ) : (
-                  <div style={{ ...inputStyle, color: 'var(--muted)', cursor: 'default' }}>
-                    Loading models…
-                  </div>
-                )}
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', color: 'var(--muted)', marginBottom: '6px' }}>
+                    Ollama Base URL
+                  </label>
+                  <WizardKeyInput
+                    value={ollamaUrl}
+                    onChange={setOllamaUrl}
+                    placeholder="http://localhost:11434"
+                    type="text"
+                  />
+                </div>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -332,78 +298,122 @@ export function SetupWizard(): JSX.Element {
             </div>
           )}
 
-          {/* ── Step 3: Image Generation ── */}
+          {/* -- Step 3: Choose your default model -- */}
           {step === 3 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <div>
                 <h2 style={{ fontSize: '20px', fontWeight: 600, color: 'var(--text)', margin: '0 0 4px' }}>
-                  Want April to generate images?
+                  Choose your default model
                 </h2>
                 <p style={{ fontSize: '14px', color: 'var(--muted)', margin: 0 }}>
-                  April can create images from your descriptions using OpenAI's image models. This
-                  always uses OpenAI regardless of your active provider.
+                  Pick a model from your configured providers, or enter a custom one.
                 </p>
               </div>
 
-              {/* Toggle */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <button
-                  onClick={() => setEnableImages(!enableImages)}
-                  style={{
-                    width: '48px',
-                    height: '26px',
-                    borderRadius: '13px',
-                    border: 'none',
-                    background: enableImages ? 'var(--accent)' : 'var(--border)',
-                    cursor: 'pointer',
-                    position: 'relative',
-                    transition: 'background 0.2s'
-                  }}
-                >
+              {!useCustomModel && !allEmpty && (
+                <div style={{ position: 'relative' }}>
+                  <select
+                    value={selectedModel ? `${selectedProvider}:${selectedModel}` : ''}
+                    onChange={(e) => handleModelSelect(e.target.value)}
+                    style={{ ...inputStyle, appearance: 'none', paddingRight: '2rem', cursor: 'pointer' }}
+                  >
+                    <option value="" disabled>Select a model...</option>
+                    {groups
+                      .filter((g) => !g.loading && !g.failed && g.models.length > 0)
+                      .map((g) => (
+                        <optgroup key={g.provider} label={g.label}>
+                          {g.models.map((m) => (
+                            <option key={`${g.provider}:${m}`} value={`${g.provider}:${m}`}>{m}</option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    <option value="__custom__">Use a custom model...</option>
+                  </select>
                   <span
                     style={{
                       position: 'absolute',
-                      top: '3px',
-                      left: enableImages ? '25px' : '3px',
-                      width: '20px',
-                      height: '20px',
-                      borderRadius: '50%',
-                      background: '#fff',
-                      transition: 'left 0.2s'
+                      right: '10px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      pointerEvents: 'none',
+                      color: 'var(--muted)',
+                      fontSize: '16px'
                     }}
-                  />
-                </button>
-                <span style={{ fontSize: '14px', color: 'var(--text)' }}>
-                  {enableImages ? 'Enabled' : 'Disabled'}
-                </span>
-              </div>
+                  >
+                    ▾
+                  </span>
+                  {groups.some((g) => g.loading) && (
+                    <p style={{ fontSize: '12px', color: 'var(--muted)', margin: '6px 0 0' }}>Loading models...</p>
+                  )}
+                </div>
+              )}
 
-              {enableImages && (
-                providerHasOpenAiKey ? (
-                  <p style={{ fontSize: '14px', color: 'var(--muted)', margin: 0 }}>
-                    ✓ OpenAI key already configured
-                  </p>
-                ) : (
-                  <input
-                    type="password"
-                    placeholder="OpenAI API key (sk-...)"
-                    value={imageKey}
-                    onChange={(e) => setImageKey(e.target.value)}
-                    style={inputStyle}
-                  />
-                )
+              {(useCustomModel || allEmpty) && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', color: 'var(--muted)', marginBottom: '6px' }}>
+                      Model name
+                    </label>
+                    <input
+                      type="text"
+                      value={customModelName}
+                      onChange={(e) => setCustomModelName(e.target.value)}
+                      placeholder="e.g. claude-sonnet-4-6, gpt-4o, llama3.2"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '13px', color: 'var(--muted)', marginBottom: '6px' }}>
+                      Provider
+                    </label>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      {(['anthropic', 'openai', 'ollama'] as Provider[]).map((p) => (
+                        <button
+                          key={p}
+                          onClick={() => setCustomProvider(p)}
+                          style={{
+                            flex: 1,
+                            padding: '8px',
+                            borderRadius: '6px',
+                            border: customProvider === p ? '2px solid var(--accent)' : '1px solid var(--border)',
+                            background: 'var(--bg)',
+                            color: 'var(--text)',
+                            fontSize: '13px',
+                            fontWeight: 500,
+                            cursor: 'pointer',
+                            textAlign: 'center'
+                          }}
+                        >
+                          {providerLabel(p)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {!allEmpty && (
+                    <button
+                      style={{ ...skipBtnStyle, textAlign: 'left', fontSize: '12px' }}
+                      onClick={() => setUseCustomModel(false)}
+                    >
+                      ← Back to model list
+                    </button>
+                  )}
+                </div>
               )}
 
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <button style={skipBtnStyle} onClick={() => setStep(2)}>← Back</button>
-                <button style={primaryBtnStyle} onClick={handleStep3Continue}>
+                <button
+                  style={{ ...primaryBtnStyle, opacity: step3Valid ? 1 : 0.5, cursor: step3Valid ? 'pointer' : 'default' }}
+                  disabled={!step3Valid}
+                  onClick={handleStep3Continue}
+                >
                   Continue →
                 </button>
               </div>
             </div>
           )}
 
-          {/* ── Step 4: About You ── */}
+          {/* -- Step 4: About You -- */}
           {step === 4 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <div>
@@ -446,7 +456,7 @@ export function SetupWizard(): JSX.Element {
                   </label>
                   <textarea
                     rows={3}
-                    placeholder="e.g. I'm a software engineer who works mostly in TypeScript…"
+                    placeholder="e.g. I'm a software engineer who works mostly in TypeScript..."
                     value={userBio}
                     onChange={(e) => setUserBio(e.target.value)}
                     style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }}
@@ -463,7 +473,7 @@ export function SetupWizard(): JSX.Element {
             </div>
           )}
 
-          {/* ── Step 5: Personality ── */}
+          {/* -- Step 5: Personality -- */}
           {step === 5 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <div>
@@ -500,7 +510,7 @@ export function SetupWizard(): JSX.Element {
                   value={customPrompt}
                   onChange={(e) => setCustomPrompt(e.target.value)}
                   rows={3}
-                  placeholder="Describe how April should communicate…"
+                  placeholder="Describe how April should communicate..."
                   style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }}
                 />
               )}
@@ -514,7 +524,7 @@ export function SetupWizard(): JSX.Element {
             </div>
           )}
 
-          {/* ── Done ── */}
+          {/* -- Done -- */}
           {step === 'done' && (
             <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
               <Check size={48} color="var(--accent)" />
@@ -524,7 +534,7 @@ export function SetupWizard(): JSX.Element {
               <p style={{ fontSize: '14px', color: 'var(--muted)', margin: 0 }}>
                 April is ready.{' '}
                 <span style={{ color: 'var(--text)' }}>
-                  {provider.charAt(0).toUpperCase() + provider.slice(1)} · {model}
+                  {providerLabel(displayProvider)} · {displayModel}
                 </span>
               </p>
               <button
