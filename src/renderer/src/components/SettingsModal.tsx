@@ -185,7 +185,10 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
       dataFolder: '',
       quickPromptHotkey: 'CmdOrCtrl+Shift+Space',
       runInBackground: true,
-      ntfyTopic: ''
+      ntfyTopic: '',
+      voiceAutoPlay: false,
+      voiceModel: 'tts-1',
+      voiceVoice: 'nova'
     }
   )
   const [dataFolder, setDataFolder] = useState('')
@@ -435,6 +438,64 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
                       onChange={(v) => set('openaiApiKey', v)}
                       placeholder="sk-..."
                     />
+                  </div>
+                )}
+
+                {/* Voice settings — shown when OpenAI key is set */}
+                {form.openaiApiKey && (
+                  <div
+                    className="rounded-lg p-3 mt-4"
+                    style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}
+                  >
+                    <p className="text-xs font-medium mb-1" style={{ color: 'var(--text)' }}>Voice</p>
+                    <p className="text-xs mb-3" style={{ color: 'var(--muted)' }}>
+                      Dictate messages and hear responses read aloud. Uses OpenAI Whisper and TTS.
+                    </p>
+
+                    <label className="flex items-center justify-between cursor-pointer mb-3">
+                      <span className="text-xs" style={{ color: 'var(--muted)' }}>Auto-play responses after voice input</span>
+                      <input
+                        type="checkbox"
+                        checked={form.voiceAutoPlay ?? false}
+                        onChange={(e) => setForm((f) => ({ ...f, voiceAutoPlay: e.target.checked }))}
+                      />
+                    </label>
+
+                    <Label>TTS Model</Label>
+                    <div className="flex gap-2 mb-3">
+                      {([['tts-1', 'Standard'], ['tts-1-hd', 'HD']] as const).map(([id, label]) => (
+                        <button
+                          key={id}
+                          onClick={() => setForm((f) => ({ ...f, voiceModel: id }))}
+                          className="flex-1 py-1.5 rounded-md text-xs transition-colors"
+                          style={{
+                            background: (form.voiceModel ?? 'tts-1') === id ? 'var(--accent)' : 'var(--surface)',
+                            color: (form.voiceModel ?? 'tts-1') === id ? 'white' : 'var(--muted)',
+                            border: '1px solid var(--border)'
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <Label>Voice</Label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {(['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'] as const).map((v) => (
+                        <button
+                          key={v}
+                          onClick={() => setForm((f) => ({ ...f, voiceVoice: v }))}
+                          className="py-1.5 rounded-md text-xs capitalize transition-colors"
+                          style={{
+                            background: (form.voiceVoice ?? 'nova') === v ? 'var(--accent)' : 'var(--surface)',
+                            color: (form.voiceVoice ?? 'nova') === v ? 'white' : 'var(--muted)',
+                            border: '1px solid var(--border)'
+                          }}
+                        >
+                          {v}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
               </>

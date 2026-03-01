@@ -5,6 +5,7 @@ import { InputBar } from './InputBar'
 import { useConversationsStore } from '../stores/conversations'
 import { useSettingsStore } from '../stores/settings'
 import { useChat } from '../hooks/useChat'
+import { useVoice } from '../hooks/useVoice'
 import type { Message as MessageType } from '../types'
 
 function estimateTokens(messages: MessageType[]): number {
@@ -61,8 +62,26 @@ export function ConversationView({ onOpenSettings }: Props): JSX.Element {
   const { activeId, conversations } = useConversationsStore()
   const { settings } = useSettingsStore()
   const { streamingState, sendMessage, stopStreaming, retryMessage } = useChat(activeId)
+  const voice = useVoice()
   const activeStream = activeId ? streamingState[activeId] : undefined
   const isActiveStreaming = !!activeStream
+  const lastInputWasVoiceRef = useRef(false)
+  const prevStreamingRef = useRef(false)
+
+  const hasOpenAIKey = !!settings?.openaiApiKey
+
+  const handleMicClick = useCallback(() => {
+    if (voice.isRecording) {
+      voice.stopRecording().then((text) => {
+        if (text && settings) {
+          lastInputWasVoiceRef.current = true
+          sendMessage(text, settings.defaultModel, settings.defaultProvider)
+        }
+      })
+    } else {
+      voice.startRecording()
+    }
+  }, [voice, settings, sendMessage])
 
   const missingKey =
     settings !== null &&
@@ -71,6 +90,24 @@ export function ConversationView({ onOpenSettings }: Props): JSX.Element {
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const activeConv = conversations.find((c) => c.id === activeId)
+
+  // Auto-play TTS when streaming finishes after a voice input
+  useEffect(() => {
+    const wasStreaming = prevStreamingRef.current
+    prevStreamingRef.current = isActiveStreaming
+
+    if (wasStreaming && !isActiveStreaming && lastInputWasVoiceRef.current && settings?.voiceAutoPlay) {
+      lastInputWasVoiceRef.current = false
+      const lastAssistant = activeConv?.messages.filter((m) => m.role === 'assistant').at(-1)
+      if (lastAssistant) {
+        const text = lastAssistant.blocks
+          .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+          .map((b) => b.text)
+          .join('\n')
+        if (text) voice.speak(lastAssistant.id, text)
+      }
+    }
+  }, [isActiveStreaming, settings?.voiceAutoPlay, activeConv?.messages, voice])
 
   const isMac = navigator.userAgent.toLowerCase().includes('mac')
   const newChatShortcut = isMac ? '⌘N' : 'Ctrl+N'
@@ -215,6 +252,10 @@ export function ConversationView({ onOpenSettings }: Props): JSX.Element {
                   message={message}
                   isStreaming={isActiveStreaming && i === activeConv.messages.length - 1}
                   onRetry={msg.role === 'user' && msg.error ? () => retryMessage(msg) : undefined}
+                  hasOpenAIKey={hasOpenAIKey}
+                  isPlaying={voice.playingMessageId === msg.id}
+                  onSpeak={(text) => voice.speak(msg.id, text)}
+                  onStopSpeaking={voice.stopSpeaking}
                 />
               )
             })}
@@ -249,6 +290,11 @@ export function ConversationView({ onOpenSettings }: Props): JSX.Element {
         onStop={stopStreaming}
         isStreaming={isActiveStreaming}
         missingKey={missingKey}
+        hasOpenAIKey={hasOpenAIKey}
+        isRecording={voice.isRecording}
+        isTranscribing={voice.isTranscribing}
+        recordingSeconds={voice.recordingSeconds}
+        onMicClick={handleMicClick}
       />
     </div>
   )

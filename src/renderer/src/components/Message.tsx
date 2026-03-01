@@ -2,7 +2,7 @@ import { useState, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import rehypeHighlight from 'rehype-highlight'
 import remarkGfm from 'remark-gfm'
-import { Copy, Check, Download, X, AlertCircle, RotateCcw } from 'lucide-react'
+import { Copy, Check, Download, X, AlertCircle, RotateCcw, Volume2 } from 'lucide-react'
 import { ActivityLog } from './ActivityLog'
 import type { Message as MessageType, ContentBlock } from '../types'
 
@@ -10,6 +10,10 @@ interface Props {
   message: MessageType
   isStreaming?: boolean
   onRetry?: () => void
+  hasOpenAIKey?: boolean
+  isPlaying?: boolean
+  onSpeak?: (text: string) => void
+  onStopSpeaking?: () => void
 }
 
 function CodeBlock({ children, ...props }: React.HTMLAttributes<HTMLPreElement>): JSX.Element {
@@ -148,7 +152,7 @@ function TextContent({ text }: { text: string }): JSX.Element {
   )
 }
 
-export function Message({ message, isStreaming = false, onRetry }: Props): JSX.Element {
+export function Message({ message, isStreaming = false, onRetry, hasOpenAIKey, isPlaying, onSpeak, onStopSpeaking }: Props): JSX.Element {
   const isUser = message.role === 'user'
   const label = isUser ? 'You' : 'April'
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
@@ -196,7 +200,30 @@ export function Message({ message, isStreaming = false, onRetry }: Props): JSX.E
           <span className="text-xs font-medium" style={{ color: 'var(--muted)' }}>
             {label}
           </span>
-          {!isUser && allText && <CopyButton text={allText} />}
+          <div className="flex items-center gap-0.5">
+            {!isUser && allText && hasOpenAIKey && onSpeak && onStopSpeaking && (
+              isPlaying ? (
+                <button
+                  onClick={onStopSpeaking}
+                  className="p-1 rounded transition-opacity hover:opacity-80 animate-pulse"
+                  style={{ color: 'var(--accent)' }}
+                  title="Stop speaking"
+                >
+                  <Volume2 size={13} />
+                </button>
+              ) : (
+                <button
+                  onClick={() => onSpeak(allText)}
+                  className="p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:opacity-80"
+                  style={{ color: 'var(--muted)' }}
+                  title="Read aloud"
+                >
+                  <Volume2 size={13} />
+                </button>
+              )
+            )}
+            {!isUser && allText && <CopyButton text={allText} />}
+          </div>
         </div>
 
         <div className="space-y-1">

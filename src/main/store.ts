@@ -55,7 +55,10 @@ const syncedDefaults: SyncedSettings = {
   memories: [],
   quickPromptHotkey: 'CmdOrCtrl+Shift+Space',
   runInBackground: true,
-  ntfyTopic: ''
+  ntfyTopic: '',
+  voiceAutoPlay: false,
+  voiceModel: 'tts-1',
+  voiceVoice: 'nova'
 }
 
 export function getDataFolder(): string {

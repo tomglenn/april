@@ -3,6 +3,7 @@ import { registerSettingsHandlers } from './settings'
 import { registerProviderHandlers } from './providers'
 import { registerChatHandlers } from './chat'
 import { registerReminderHandlers } from './reminders'
+import { registerVoiceHandlers } from './voice'
 
 export function registerAllHandlers(): void {
   registerConversationHandlers()
@@ -10,4 +11,5 @@ export function registerAllHandlers(): void {
   registerProviderHandlers()
   registerChatHandlers()
   registerReminderHandlers()
+  registerVoiceHandlers()
 }

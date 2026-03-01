@@ -8,7 +8,7 @@ import {
   ClipboardEvent,
   ChangeEvent
 } from 'react'
-import { Send, Square, Paperclip, X } from 'lucide-react'
+import { Send, Square, Paperclip, X, Mic, Loader } from 'lucide-react'
 import { useSettingsStore } from '../stores/settings'
 import { useConversationsStore } from '../stores/conversations'
 import type { ImageAttachment } from '../types'
@@ -19,6 +19,11 @@ interface Props {
   isStreaming: boolean
   missingKey?: boolean
   prefill?: string
+  hasOpenAIKey?: boolean
+  isRecording?: boolean
+  isTranscribing?: boolean
+  recordingSeconds?: number
+  onMicClick?: () => void
 }
 
 async function resizeToAttachment(file: File): Promise<ImageAttachment> {
@@ -54,7 +59,7 @@ async function resizeToAttachment(file: File): Promise<ImageAttachment> {
   })
 }
 
-export function InputBar({ onSend, onStop, isStreaming, missingKey, prefill }: Props): JSX.Element {
+export function InputBar({ onSend, onStop, isStreaming, missingKey, prefill, hasOpenAIKey, isRecording, isTranscribing, recordingSeconds, onMicClick }: Props): JSX.Element {
   const { settings } = useSettingsStore()
   const { activeId } = useConversationsStore()
   const [text, setText] = useState('')
@@ -168,6 +173,19 @@ export function InputBar({ onSend, onStop, isStreaming, missingKey, prefill }: P
         }}
       >
         <div className="flex-1 flex flex-col min-w-0">
+          {/* Recording indicator */}
+          {isRecording && (
+            <div className="flex items-center gap-2 px-1 pt-1 pb-0.5">
+              <div
+                className="w-2 h-2 rounded-full animate-pulse"
+                style={{ background: '#ef4444' }}
+              />
+              <span className="text-xs" style={{ color: '#ef4444' }}>
+                {recordingSeconds ?? 0}s Recording...
+              </span>
+            </div>
+          )}
+
           {/* Image preview strip */}
           {images.length > 0 && (
             <div className="flex gap-2 flex-wrap mb-2 pt-1 px-1">
@@ -217,6 +235,30 @@ export function InputBar({ onSend, onStop, isStreaming, missingKey, prefill }: P
           >
             <Paperclip size={14} />
           </button>
+
+          {hasOpenAIKey && !isStreaming && onMicClick && (
+            <button
+              onClick={onMicClick}
+              disabled={isTranscribing}
+              className="p-2 rounded-lg transition-all hover:opacity-80 disabled:opacity-40 relative"
+              style={{ color: isRecording ? '#ef4444' : 'var(--muted)' }}
+              title={isTranscribing ? 'Transcribing...' : isRecording ? 'Stop recording' : 'Voice input'}
+            >
+              {isTranscribing ? (
+                <Loader size={14} className="animate-spin" />
+              ) : (
+                <>
+                  <Mic size={14} />
+                  {isRecording && (
+                    <div
+                      className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full animate-pulse"
+                      style={{ background: '#ef4444' }}
+                    />
+                  )}
+                </>
+              )}
+            </button>
+          )}
 
           {isStreaming ? (
             <button

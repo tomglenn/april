@@ -114,7 +114,13 @@ const api = {
       ipcRenderer.off('reminders:changed', wrapper)
       remindersListenerMap.delete(cb)
     }
-  }
+  },
+
+  // Voice
+  transcribeAudio: (audioBuffer: ArrayBuffer): Promise<string> =>
+    ipcRenderer.invoke('voice:transcribe', audioBuffer),
+  synthesizeSpeech: (text: string): Promise<ArrayBuffer> =>
+    ipcRenderer.invoke('voice:synthesize', text)
 }
 
 contextBridge.exposeInMainWorld('api', api)

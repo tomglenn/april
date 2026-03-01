@@ -77,6 +77,9 @@ export interface SyncedSettings {
   quickPromptHotkey: string
   runInBackground: boolean
   ntfyTopic: string
+  voiceAutoPlay: boolean
+  voiceModel: string
+  voiceVoice: string
 }
 
 // Combined view for the renderer — it doesn't need to know about the split
@@ -118,6 +121,8 @@ declare global {
       cancelReminder: (id: string) => Promise<boolean>
       onRemindersChanged: (cb: () => void) => void
       offRemindersChanged: (cb: () => void) => void
+      transcribeAudio: (audioBuffer: ArrayBuffer) => Promise<string>
+      synthesizeSpeech: (text: string) => Promise<ArrayBuffer>
     }
   }
 }
