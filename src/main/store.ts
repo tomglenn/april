@@ -25,7 +25,7 @@ Today's date is {{date}}.`
 
 // ── Local store (electron-store, never synced) ──────────────────────────────
 
-const APP_DATA_DIR = join(app.getPath('appData'), 'april-agent')
+const APP_DATA_DIR = join(app.getPath('appData'), app.isPackaged ? 'april-agent' : 'april-agent-dev')
 
 const localDefaults: LocalSettings = {
   anthropicApiKey: '',

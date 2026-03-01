@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import rehypeHighlight from 'rehype-highlight'
 import remarkGfm from 'remark-gfm'
@@ -10,6 +10,39 @@ interface Props {
   message: MessageType
   isStreaming?: boolean
   onRetry?: () => void
+}
+
+function CodeBlock({ children, ...props }: React.HTMLAttributes<HTMLPreElement>): JSX.Element {
+  const preRef = useRef<HTMLPreElement>(null)
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async (): Promise<void> => {
+    const text = preRef.current?.innerText ?? ''
+    await navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div className="relative group/code my-2">
+      <pre
+        ref={preRef}
+        {...props}
+        className="rounded-md p-4 overflow-x-auto text-xs my-0"
+        style={{ background: 'var(--surface-alt)', border: '1px solid var(--border)' }}
+      >
+        {children}
+      </pre>
+      <button
+        onClick={handleCopy}
+        className="absolute top-2 right-2 p-1 rounded opacity-0 group-hover/code:opacity-100 transition-opacity hover:opacity-80"
+        style={{ color: 'var(--muted)' }}
+        title="Copy code"
+      >
+        {copied ? <Check size={13} /> : <Copy size={13} />}
+      </button>
+    </div>
+  )
 }
 
 function CopyButton({ text }: { text: string }): JSX.Element {
@@ -87,20 +120,7 @@ function TextContent({ text }: { text: string }): JSX.Element {
               {children}
             </td>
           ),
-          pre: ({ children, ...props }) => (
-            <div className="relative group/code">
-              <pre
-                {...(props as React.HTMLAttributes<HTMLPreElement>)}
-                className="rounded-md p-4 overflow-x-auto text-xs my-2"
-                style={{
-                  background: 'var(--surface-alt)',
-                  border: '1px solid var(--border)'
-                }}
-              >
-                {children}
-              </pre>
-            </div>
-          ),
+          pre: CodeBlock,
           code: ({ className, children, ...props }) => {
             const isBlock = className?.includes('language-')
             if (isBlock) {
