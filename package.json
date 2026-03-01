@@ -48,6 +48,10 @@
       {
         "from": "resources/icon.icns",
         "to": "icon.icns"
+      },
+      {
+        "from": "resources/logo.png",
+        "to": "logo.png"
       }
     ],
     "mac": {
