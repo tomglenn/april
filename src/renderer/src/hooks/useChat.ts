@@ -85,9 +85,10 @@ export function useChat(conversationId: string | null): UseChatReturn {
       }
       addMessage(convId, userMsg)
 
-      // Get full conversation for context — read directly from store to avoid stale closure
+      // Get full conversation for context — read directly from store to avoid stale closure.
+      // addMessage is synchronous (Zustand set()), so the store already contains userMsg.
       const conv = useConversationsStore.getState().conversations.find((c) => c.id === convId)
-      const allMessages = conv ? [...conv.messages, userMsg] : [userMsg]
+      const allMessages = conv?.messages ?? [userMsg]
 
       // Create placeholder assistant message
       const assistantMsg: Message = {
