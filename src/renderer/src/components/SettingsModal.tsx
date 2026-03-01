@@ -96,6 +96,74 @@ function SensitiveInput({
 const inputCls = 'w-full px-3 py-2 rounded-md text-sm outline-none'
 const inputStyle = { background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }
 
+function formatAccelerator(e: KeyboardEvent): string | null {
+  // Ignore bare modifier presses
+  if (['Meta', 'Control', 'Alt', 'Shift'].includes(e.key)) return null
+
+  const parts: string[] = []
+  if (e.metaKey || e.ctrlKey) parts.push('CmdOrCtrl')
+  if (e.altKey) parts.push('Alt')
+  if (e.shiftKey) parts.push('Shift')
+
+  // Need at least one modifier
+  if (parts.length === 0) return null
+
+  // Map special keys
+  const keyMap: Record<string, string> = {
+    ' ': 'Space', ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right',
+    Backspace: 'Backspace', Delete: 'Delete', Tab: 'Tab', Enter: 'Return'
+  }
+  const key = keyMap[e.key] || (e.key.length === 1 ? e.key.toUpperCase() : e.key)
+  parts.push(key)
+  return parts.join('+')
+}
+
+function displayAccelerator(accel: string): string {
+  const isMac = navigator.platform.includes('Mac')
+  return accel
+    .replace(/CmdOrCtrl/g, isMac ? '\u2318' : 'Ctrl')
+    .replace(/Shift/g, isMac ? '\u21E7' : 'Shift')
+    .replace(/Alt/g, isMac ? '\u2325' : 'Alt')
+    .replace(/\+/g, isMac ? '' : '+')
+}
+
+function HotkeyRecorder({ value, onChange }: { value: string; onChange: (v: string) => void }): JSX.Element {
+  const [recording, setRecording] = useState(false)
+
+  useEffect(() => {
+    if (!recording) return
+    const handler = (e: KeyboardEvent): void => {
+      e.preventDefault()
+      e.stopPropagation()
+      if (e.key === 'Escape') { setRecording(false); return }
+      const accel = formatAccelerator(e)
+      if (accel) {
+        onChange(accel)
+        setRecording(false)
+      }
+    }
+    window.addEventListener('keydown', handler, true)
+    return () => window.removeEventListener('keydown', handler, true)
+  }, [recording, onChange])
+
+  return (
+    <button
+      onClick={() => setRecording(true)}
+      className="px-3 py-2 rounded-md text-sm font-mono transition-all"
+      style={{
+        background: 'var(--bg)',
+        border: recording ? '2px solid var(--accent)' : '1px solid var(--border)',
+        color: recording ? 'var(--accent)' : 'var(--text)',
+        animation: recording ? 'pulse 1.5s infinite' : 'none',
+        minWidth: '160px',
+        textAlign: 'center'
+      }}
+    >
+      {recording ? 'Press a shortcut...' : displayAccelerator(value)}
+    </button>
+  )
+}
+
 export function SettingsModal({ onClose }: Props): JSX.Element {
   const { settings, update } = useSettingsStore()
   const [tab, setTab] = useState<Tab>('general')
@@ -113,7 +181,8 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
       userLocation: '',
       userBio: '',
       mcpServers: [],
-      dataFolder: ''
+      dataFolder: '',
+      quickPromptHotkey: 'CmdOrCtrl+Shift+Space'
     }
   )
   const [dataFolder, setDataFolder] = useState('')
@@ -176,7 +245,9 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
     const toSave = personality
       ? { ...form, systemPrompt: applyPersonality(form.systemPrompt, personality, customPrompt) }
       : form
+    const hotkeyChanged = settings?.quickPromptHotkey !== toSave.quickPromptHotkey
     await update(toSave)
+    if (hotkeyChanged) window.api.notifyHotkeyChanged()
     setSaving(false)
     onClose()
   }
@@ -455,6 +526,18 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
             {/* ── Advanced ── */}
             {tab === 'advanced' && (
               <>
+                {/* Quick Prompt Hotkey */}
+                <div className="mb-5">
+                  <Label>Quick Prompt Hotkey</Label>
+                  <p className="text-xs mb-2" style={{ color: 'var(--muted)' }}>
+                    Global shortcut to open the quick prompt overlay from any app.
+                  </p>
+                  <HotkeyRecorder
+                    value={form.quickPromptHotkey || 'CmdOrCtrl+Shift+Space'}
+                    onChange={(v) => setForm((f) => ({ ...f, quickPromptHotkey: v }))}
+                  />
+                </div>
+
                 {/* Data Folder */}
                 <div className="mb-5">
                   <Label>Data Folder</Label>

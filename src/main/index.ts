@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, screen } from 'electron'
+import { app, shell, BrowserWindow, screen, globalShortcut, ipcMain } from 'electron'
 import { join } from 'path'
 import { execSync } from 'child_process'
 import { watch, existsSync, readFileSync, writeFileSync } from 'fs'
@@ -25,6 +25,7 @@ import {
   localStore,
   getDataFolder,
   getSettings,
+  getSyncedSettings,
   ensureDataFolderExists,
   saveConversation,
   setSyncedSettings,
@@ -279,6 +280,107 @@ function createWindow(): BrowserWindow {
   return mainWindow
 }
 
+let mainWindow: BrowserWindow | null = null
+
+// ── Overlay window + global shortcut ─────────────────────────────────────
+
+let overlayWindow: BrowserWindow | null = null
+let currentHotkey: string | null = null
+
+function createOverlayWindow(): BrowserWindow {
+  const cursorPoint = screen.getCursorScreenPoint()
+  const display = screen.getDisplayNearestPoint(cursorPoint)
+  const { x, y, width, height } = display.workArea
+
+  const overlayWidth = 600
+  const overlayHeight = 480
+  const ox = x + Math.round((width - overlayWidth) / 2)
+  const oy = y + Math.round(height * 0.18)
+
+  const win = new BrowserWindow({
+    width: overlayWidth,
+    height: overlayHeight,
+    x: ox,
+    y: oy,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    show: false,
+    icon: iconPath,
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: false
+    }
+  })
+
+  // Hide on blur (click outside)
+  win.on('blur', () => {
+    if (!win.isDestroyed()) win.hide()
+  })
+
+  win.on('closed', () => {
+    overlayWindow = null
+  })
+
+  // Open links in system browser
+  win.webContents.setWindowOpenHandler((details) => {
+    shell.openExternal(details.url)
+    return { action: 'deny' }
+  })
+
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    win.loadURL(process.env['ELECTRON_RENDERER_URL'] + '?overlay=true')
+  } else {
+    win.loadFile(join(__dirname, '../renderer/index.html'), { search: 'overlay=true' })
+  }
+
+  return win
+}
+
+function toggleOverlay(): void {
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    if (overlayWindow.isVisible()) {
+      overlayWindow.hide()
+    } else {
+      // Reposition to cursor's display
+      const cursorPoint = screen.getCursorScreenPoint()
+      const display = screen.getDisplayNearestPoint(cursorPoint)
+      const { x, y, width, height } = display.workArea
+      const ox = x + Math.round((width - 600) / 2)
+      const oy = y + Math.round(height * 0.18)
+      overlayWindow.setPosition(ox, oy)
+      overlayWindow.show()
+      overlayWindow.focus()
+    }
+  } else {
+    overlayWindow = createOverlayWindow()
+    overlayWindow.once('ready-to-show', () => {
+      if (overlayWindow && !overlayWindow.isDestroyed()) {
+        overlayWindow.show()
+        overlayWindow.focus()
+      }
+    })
+  }
+}
+
+function registerQuickPromptShortcut(): void {
+  const hotkey = getSyncedSettings().quickPromptHotkey || 'CmdOrCtrl+Shift+Space'
+
+  if (currentHotkey) {
+    globalShortcut.unregister(currentHotkey)
+    currentHotkey = null
+  }
+
+  const ok = globalShortcut.register(hotkey, toggleOverlay)
+  if (ok) {
+    currentHotkey = hotkey
+  } else {
+    console.warn(`[hotkey] Failed to register global shortcut: ${hotkey}`)
+  }
+}
+
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.april-agent')
 
@@ -303,18 +405,50 @@ app.whenReady().then(() => {
     mcpManager.syncServers(settings.mcpServers).catch(() => {})
   }
 
-  createWindow()
+  mainWindow = createWindow()
+  registerQuickPromptShortcut()
+
+  ipcMain.on('settings:hotkeyChanged', () => registerQuickPromptShortcut())
+
+  ipcMain.on('overlay:openInApp', (_event, conversationId: string) => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      mainWindow = createWindow()
+    }
+    // Show + focus main window BEFORE hiding overlay so the app stays active on macOS
+    mainWindow.show()
+    mainWindow.focus()
+    if (process.platform === 'darwin') app.focus({ steal: true })
+    // Then hide overlay
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.hide()
+    }
+    // Tell the main window which conversation to open.
+    // Small delay ensures the renderer is focused and ready to process.
+    const win = mainWindow
+    setTimeout(() => {
+      if (!win.isDestroyed()) {
+        win.webContents.send('open-conversation', conversationId)
+      }
+    }, 200)
+  })
 
   app.on('activate', () => {
-    const wins = BrowserWindow.getAllWindows()
-    if (wins.length === 0) createWindow()
-    else { wins[0].show(); wins[0].focus() }
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      mainWindow = createWindow()
+    } else {
+      mainWindow.show()
+      mainWindow.focus()
+    }
   })
 })
 
 app.on('before-quit', () => {
   stopWatching()
   mcpManager.stopAll()
+})
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll()
 })
 
 app.on('window-all-closed', () => {

@@ -7,7 +7,7 @@ import { useConversationsStore } from './stores/conversations'
 import { useSettingsStore } from './stores/settings'
 
 export default function App(): JSX.Element {
-  const { load: loadConversations, createNew } = useConversationsStore()
+  const { load: loadConversations, createNew, setActiveId } = useConversationsStore()
   const { load: loadSettings, settings } = useSettingsStore()
   const [showSettings, setShowSettings] = useState(false)
 
@@ -15,6 +15,15 @@ export default function App(): JSX.Element {
     loadSettings()
     loadConversations()
   }, [])
+
+  // Listen for overlay "Open in April" requests
+  useEffect(() => {
+    const handler = (id: string): void => {
+      loadConversations().then(() => setActiveId(id))
+    }
+    window.api.onOpenConversation(handler)
+    return () => window.api.offOpenConversation(handler)
+  }, [loadConversations, setActiveId])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {

@@ -8,6 +8,7 @@ import type { MCPServerStatus } from '../main/mcp'
 type ChunkWrapper = Parameters<typeof ipcRenderer.on>[1]
 const chunkListenerMap = new Map<(data: ChunkData) => void, ChunkWrapper>()
 const syncListenerMap = new Map<() => void, ChunkWrapper>()
+const openConvListenerMap = new Map<(id: string) => void, ChunkWrapper>()
 
 const api = {
   // Chat
@@ -74,7 +75,24 @@ const api = {
 
   // MCP
   getMcpStatus: (): Promise<MCPServerStatus[]> =>
-    ipcRenderer.invoke('mcp:status')
+    ipcRenderer.invoke('mcp:status'),
+
+  // Quick Prompt
+  notifyHotkeyChanged: (): void => ipcRenderer.send('settings:hotkeyChanged'),
+  openInApp: (conversationId: string): void =>
+    ipcRenderer.send('overlay:openInApp', conversationId),
+  onOpenConversation: (cb: (id: string) => void): void => {
+    const wrapper: ChunkWrapper = (_, id) => cb(id as string)
+    openConvListenerMap.set(cb, wrapper)
+    ipcRenderer.on('open-conversation', wrapper)
+  },
+  offOpenConversation: (cb: (id: string) => void): void => {
+    const wrapper = openConvListenerMap.get(cb)
+    if (wrapper) {
+      ipcRenderer.off('open-conversation', wrapper)
+      openConvListenerMap.delete(cb)
+    }
+  }
 }
 
 contextBridge.exposeInMainWorld('api', api)

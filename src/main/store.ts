@@ -51,7 +51,8 @@ const syncedDefaults: SyncedSettings = {
   userName: '',
   userLocation: '',
   userBio: '',
-  mcpServers: []
+  mcpServers: [],
+  quickPromptHotkey: 'CmdOrCtrl+Shift+Space'
 }
 
 export function getDataFolder(): string {

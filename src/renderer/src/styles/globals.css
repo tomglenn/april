@@ -173,6 +173,12 @@ code {
   animation: fade-in 150ms ease-out;
 }
 
+/* Overlay mode — transparent background for floating window */
+body.overlay-mode,
+body.overlay-mode #root {
+  background: transparent !important;
+}
+
 /* Highlight.js theme overrides */
 .hljs {
   background: var(--surface-alt) !important;

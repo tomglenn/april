@@ -60,6 +60,7 @@ export interface SyncedSettings {
   userLocation: string
   userBio: string
   mcpServers: MCPServerConfig[]
+  quickPromptHotkey: string
 }
 
 // Combined view for the renderer — it doesn't need to know about the split
@@ -91,6 +92,10 @@ declare global {
       pickDataFolder: () => Promise<string | null>
       onSyncChanged: (cb: () => void) => void
       offSyncChanged: (cb: () => void) => void
+      notifyHotkeyChanged: () => void
+      openInApp: (conversationId: string) => void
+      onOpenConversation: (cb: (id: string) => void) => void
+      offOpenConversation: (cb: (id: string) => void) => void
     }
   }
 }
