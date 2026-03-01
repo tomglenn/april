@@ -73,9 +73,9 @@ function downloadImage(src: string): void {
   link.click()
 }
 
-function TextContent({ text }: { text: string }): JSX.Element {
+function TextContent({ text, showCursor }: { text: string; showCursor?: boolean }): JSX.Element {
   return (
-    <div className="prose text-sm" style={{ color: 'var(--text)' }}>
+    <div className={`prose text-sm${showCursor ? ' streaming-cursor' : ''}`} style={{ color: 'var(--text)' }}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeHighlight]}
@@ -201,13 +201,24 @@ export function Message({ message, isStreaming = false, onRetry }: Props): JSX.E
 
         <div className="space-y-1">
           {items.map((item, i) => {
+            const fadeClass = isStreaming ? ' fade-in' : ''
             if (item.kind === 'text') {
-              return <TextContent key={i} text={item.text} />
+              const isLastText = (() => {
+                for (let j = items.length - 1; j >= 0; j--) {
+                  if (items[j].kind === 'text') return j === i
+                }
+                return false
+              })()
+              return (
+                <div key={i} className={fadeClass.trim()}>
+                  <TextContent text={item.text} showCursor={isStreaming && isLastText} />
+                </div>
+              )
             }
             if (item.kind === 'image') {
               const src = `data:${item.block.mediaType};base64,${item.block.data}`
               return (
-                <div key={i} className="relative group/img inline-block my-1">
+                <div key={i} className={`relative group/img inline-block my-1${fadeClass}`}>
                   <img
                     src={src}
                     alt="Generated image"

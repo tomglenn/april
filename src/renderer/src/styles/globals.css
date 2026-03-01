@@ -163,6 +163,29 @@ code {
   -webkit-app-region: no-drag;
 }
 
+/* Streaming cursor */
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.streaming-cursor > :last-child::after {
+  content: '\u258C';
+  animation: cursor-blink 0.8s step-end infinite;
+  color: var(--accent);
+  margin-left: 1px;
+}
+
+/* Fade-in for new content blocks */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.fade-in {
+  animation: fade-in 150ms ease-out;
+}
+
 /* Highlight.js theme overrides */
 .hljs {
   background: var(--surface-alt) !important;

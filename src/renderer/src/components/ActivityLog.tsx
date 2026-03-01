@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { ChevronRight, Search, Globe, CloudSun, Wrench, Brain, ImageIcon } from 'lucide-react'
 import type { ContentBlock } from '../types'
 
@@ -101,6 +101,47 @@ function summaryLabel(blocks: ContentBlock[]): string {
 
 export function ActivityLog({ blocks, isStreaming }: Props): JSX.Element | null {
   const [expanded, setExpanded] = useState(false)
+  const [elapsed, setElapsed] = useState(0)
+  const startTimeRef = useRef<number>(Date.now())
+  const currentToolIdRef = useRef<string | null>(null)
+
+  // Track elapsed time for in-progress tool calls
+  useEffect(() => {
+    if (!isStreaming) {
+      setElapsed(0)
+      currentToolIdRef.current = null
+      return
+    }
+
+    // Find current in-progress tool_use id
+    const resultedIds = new Set(
+      blocks
+        .filter((b) => b.type === 'tool_result')
+        .map((b) => (b as { type: 'tool_result'; tool_use_id: string }).tool_use_id)
+    )
+    let activeId: string | null = null
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      const b = blocks[i]
+      if (b.type === 'tool_use' && !resultedIds.has(b.id)) {
+        activeId = b.id
+        break
+      }
+    }
+
+    // Reset timer when a new tool starts
+    if (activeId !== currentToolIdRef.current) {
+      currentToolIdRef.current = activeId
+      startTimeRef.current = Date.now()
+      setElapsed(0)
+    }
+
+    if (!activeId) return
+
+    const interval = setInterval(() => {
+      setElapsed((Date.now() - startTimeRef.current) / 1000)
+    }, 100)
+    return () => clearInterval(interval)
+  }, [isStreaming, blocks])
 
   if (blocks.length === 0) return null
 
@@ -112,7 +153,12 @@ export function ActivityLog({ blocks, isStreaming }: Props): JSX.Element | null 
           className="w-1.5 h-1.5 rounded-full shrink-0 animate-pulse"
           style={{ background: 'var(--accent)' }}
         />
-        <span className="text-xs">{currentStatusLabel(blocks)}</span>
+        <span className="text-xs">
+          {currentStatusLabel(blocks)}
+          {elapsed > 0 && (
+            <span className="ml-1.5" style={{ opacity: 0.6 }}>{elapsed.toFixed(1)}s</span>
+          )}
+        </span>
       </div>
     )
   }

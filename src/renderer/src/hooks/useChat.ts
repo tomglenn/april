@@ -252,9 +252,20 @@ export function useChat(conversationId: string | null): UseChatReturn {
         // We cannot rely on the done/aborted chunk because offChunk may
         // remove the listener before that chunk arrives (IPC race).
         if (finalMsg && !errorHandled) {
-          updateMessageById(convId, msgId, () => ({ ...finalMsg!, id: msgId }))
-          const updatedConv = useConversationsStore.getState().conversations.find((c) => c.id === convId)
-          if (updatedConv) window.api.updateConversation(updatedConv)
+          const finalMessage: Message = { ...finalMsg, id: msgId }
+          const conv = useConversationsStore.getState().conversations.find((c) => c.id === convId)
+          const placeholderExists = conv?.messages.some((m) => m.id === msgId)
+          if (placeholderExists) {
+            updateMessageById(convId, msgId, () => finalMessage)
+            // updateMessageById doesn't persist — do it explicitly
+            const updatedConv = useConversationsStore.getState().conversations.find((c) => c.id === convId)
+            if (updatedConv) window.api.updateConversation(updatedConv)
+          } else {
+            // Placeholder was removed (e.g. by onSyncChanged stripping empty
+            // assistant messages during streaming) — re-add the completed message.
+            // addMessage persists internally.
+            addMessage(convId, finalMessage)
+          }
         }
 
         setStreamingState((prev) => { const { [convId]: _, ...rest } = prev; return rest })
