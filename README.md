@@ -15,7 +15,12 @@ A personal AI assistant for your desktop. Chat with Claude, GPT, or local models
   - Weather forecasts (current + 4-day)
   - Image generation via GPT-Image-1 (requires OpenAI key)
   - Reminders — "remind me in 30 minutes to check the oven" (optional [ntfy.sh](https://ntfy.sh) push notifications)
-- **MCP server support** — connect any Model Context Protocol server via the built-in catalog
+- **MCP server support** — connect any [Model Context Protocol](https://modelcontextprotocol.io) server via the built-in catalog or add your own. Catalog includes:
+  - **Filesystem** — read, write, and search files on your computer
+  - **Memory** — persistent key-value memory across conversations
+  - **GitHub** — search repos, manage issues and PRs
+  - **Brave Search** — higher-quality web search (upgrade over built-in DuckDuckGo)
+  - **SQLite** — query and modify local databases with natural language
 - **Extended thinking** support for Claude models
 - **Activity log** — see tool calls and MCP actions as they happen
 - **Conversation history** with auto-generated titles
