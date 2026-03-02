@@ -68,7 +68,7 @@ export interface SyncedSettings {
   defaultProvider: Provider
   defaultModel: string
   theme: 'dark' | 'light' | 'system'
-  systemPrompt: string
+  personalityPrompt: string
   userName: string
   userLocation: string
   userBio: string

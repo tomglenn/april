@@ -2,7 +2,7 @@ import { ipcMain } from 'electron'
 import { setMaxListeners } from 'events'
 import Anthropic from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
-import { getSettings } from '../store'
+import { getSettings, DEFAULT_SYSTEM_PROMPT } from '../store'
 import { TOOLS, executeTool } from '../tools'
 import { mcpManager } from '../mcp'
 import type { ToolDefinition } from '../tools'
@@ -171,14 +171,18 @@ function messagesToOpenAIFormat(messages: Message[]): OpenAI.ChatCompletionMessa
 
 // ── System prompt helper ──────────────────────────────────────────────────────
 
-function buildSystemPrompt(raw: string, settings: Settings): string {
+function buildSystemPrompt(settings: Settings): string {
   const date = new Date().toLocaleDateString('en-GB', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
     day: 'numeric'
   })
-  let prompt = raw.replace('{{date}}', date)
+  let prompt = DEFAULT_SYSTEM_PROMPT.replace('{{date}}', date)
+
+  if (settings.personalityPrompt) {
+    prompt += '\n\n' + settings.personalityPrompt
+  }
 
   const parts: string[] = []
   if (settings.userName) parts.push(`The user's name is ${settings.userName}.`)
@@ -460,7 +464,7 @@ export function registerChatHandlers(): void {
   ipcMain.handle('chat:send', async (event, payload: SendMessagePayload) => {
     const settings = getSettings()
     const sender = event.sender
-    const systemPrompt = buildSystemPrompt(settings.systemPrompt || '', settings)
+    const systemPrompt = buildSystemPrompt(settings)
 
     const controller = new AbortController()
     // Each loop iteration (tool call) attaches a listener to the signal via the SDK stream;

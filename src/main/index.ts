@@ -30,7 +30,6 @@ import {
   saveConversation,
   setSyncedSettings,
   isOwnRecentWrite,
-  DEFAULT_SYSTEM_PROMPT,
   LEGACY_CONFIG_PATH,
   setOnDataFolderChanged
 } from './store'
@@ -91,7 +90,6 @@ function runMigrationIfNeeded(): void {
           defaultProvider: s.defaultProvider || 'anthropic',
           defaultModel: s.defaultModel || 'claude-sonnet-4-6',
           theme: s.theme || 'dark',
-          systemPrompt: s.systemPrompt || DEFAULT_SYSTEM_PROMPT,
           userName: s.userName || '',
           userLocation: s.userLocation || '',
           userBio: s.userBio || '',
@@ -135,7 +133,6 @@ function runMigrationIfNeeded(): void {
       defaultProvider: settings.defaultProvider || 'anthropic',
       defaultModel: settings.defaultModel || 'claude-sonnet-4-6',
       theme: settings.theme || 'dark',
-      systemPrompt: settings.systemPrompt || DEFAULT_SYSTEM_PROMPT,
       userName: settings.userName || '',
       userLocation: settings.userLocation || '',
       userBio: settings.userBio || '',

@@ -47,7 +47,7 @@ const syncedDefaults: SyncedSettings = {
   defaultProvider: 'anthropic',
   defaultModel: 'claude-sonnet-4-6',
   theme: 'dark',
-  systemPrompt: DEFAULT_SYSTEM_PROMPT,
+  personalityPrompt: '',
   userName: '',
   userLocation: '',
   userBio: '',

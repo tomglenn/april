@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { X, Plus, Trash2, Loader, CheckCircle, AlertCircle } from 'lucide-react'
 import { useSettingsStore } from '../stores/settings'
 import type { MCPServerConfig, Settings } from '../types'
@@ -32,20 +32,12 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'advanced', label: 'Advanced' }
 ]
 
-function detectPersonality(prompt: string): Personality | null {
+function detectPersonality(personalityPrompt: string): { personality: Personality | null; customText: string } {
+  if (!personalityPrompt) return { personality: null, customText: '' }
   for (const [id, text] of Object.entries(PERSONALITY_PROMPTS)) {
-    if (prompt.includes(text)) return id as Personality
+    if (personalityPrompt === text) return { personality: id as Personality, customText: '' }
   }
-  return null
-}
-
-function applyPersonality(prompt: string, personality: Personality, customText: string): string {
-  let base = prompt
-  for (const text of Object.values(PERSONALITY_PROMPTS)) {
-    base = base.replace('\n\n' + text, '').replace(text, '')
-  }
-  const addition = personality === 'custom' ? customText : PERSONALITY_PROMPTS[personality as Exclude<Personality, 'custom'>]
-  return base.trimEnd() + '\n\n' + addition
+  return { personality: 'custom', customText: personalityPrompt }
 }
 
 interface Props {
@@ -142,7 +134,7 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
       defaultProvider: 'anthropic',
       defaultModel: 'claude-sonnet-4-6',
       theme: 'dark',
-      systemPrompt: '',
+      personalityPrompt: '',
       setupCompleted: true,
       userName: '',
       userLocation: '',
@@ -162,15 +154,54 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
   const [mcpStatus, setMcpStatus] = useState<MCPServerStatus[]>([])
   const [argsText, setArgsText] = useState<Record<number, string>>({})
   const [showCatalog, setShowCatalog] = useState(false)
-  const [saving, setSaving] = useState(false)
   const [useCustomModel, setUseCustomModel] = useState(false)
-  const [personality, setPersonality] = useState<Personality | null>(() =>
-    detectPersonality(settings?.systemPrompt ?? '')
-  )
-  const [customPrompt, setCustomPrompt] = useState(PERSONALITY_PROMPTS.friendly)
+  const detected = detectPersonality(settings?.personalityPrompt ?? '')
+  const [personality, setPersonality] = useState<Personality | null>(detected.personality)
+  const [customPrompt, setCustomPrompt] = useState(detected.customText)
+
+  // --- Auto-save infrastructure ---
+  const pendingRef = useRef<Partial<Settings>>({})
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const ownSaveRef = useRef(false)
+
+  const save = useCallback(async (partial: Partial<Settings>) => {
+    ownSaveRef.current = true
+    await update(partial)
+    if ('quickPromptHotkey' in partial) window.api.notifyHotkeyChanged()
+    if ('runInBackground' in partial) window.api.notifyBackgroundChanged()
+  }, [update])
+
+  const debouncedSave = useCallback((partial: Partial<Settings>) => {
+    pendingRef.current = { ...pendingRef.current, ...partial }
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      save(pendingRef.current)
+      pendingRef.current = {}
+      debounceRef.current = null
+    }, 600)
+  }, [save])
+
+  // Flush pending saves on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current)
+        if (Object.keys(pendingRef.current).length > 0) {
+          save(pendingRef.current)
+          pendingRef.current = {}
+        }
+      }
+    }
+  }, [save])
 
   useEffect(() => {
     if (settings) {
+      // Skip form reset when the store update came from our own save —
+      // we already have the correct form state locally
+      if (ownSaveRef.current) {
+        ownSaveRef.current = false
+        return
+      }
       setForm(settings)
       setArgsText({})
     }
@@ -197,41 +228,42 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
 
   const set = (key: keyof Settings, value: string): void => {
     setForm((f) => ({ ...f, [key]: value }))
-  }
-
-  const handleSave = async (): Promise<void> => {
-    setSaving(true)
-    const toSave = personality
-      ? { ...form, systemPrompt: applyPersonality(form.systemPrompt, personality, customPrompt) }
-      : form
-    const hotkeyChanged = settings?.quickPromptHotkey !== toSave.quickPromptHotkey
-    const backgroundChanged = settings?.runInBackground !== toSave.runInBackground
-    await update(toSave)
-    if (hotkeyChanged) window.api.notifyHotkeyChanged()
-    if (backgroundChanged) window.api.notifyBackgroundChanged()
-    setSaving(false)
-    onClose()
+    debouncedSave({ [key]: value })
   }
 
   const addMcp = (): void => {
-    setForm((f) => ({ ...f, mcpServers: [...(f.mcpServers ?? []), { name: '', command: '', args: [], enabled: true }] }))
+    const updated = [...(form.mcpServers ?? []), { name: '', command: '', args: [], enabled: true }]
+    setForm((f) => ({ ...f, mcpServers: updated }))
+    save({ mcpServers: updated })
   }
 
   const handleAddFromCatalog = (server: MCPServerConfig): void => {
-    setForm((f) => ({ ...f, mcpServers: [...(f.mcpServers ?? []), server] }))
+    const updated = [...(form.mcpServers ?? []), server]
+    setForm((f) => ({ ...f, mcpServers: updated }))
+    save({ mcpServers: updated })
   }
 
   const removeMcp = (i: number): void => {
-    setForm((f) => ({ ...f, mcpServers: (f.mcpServers ?? []).filter((_, idx) => idx !== i) }))
+    const updated = (form.mcpServers ?? []).filter((_, idx) => idx !== i)
+    setForm((f) => ({ ...f, mcpServers: updated }))
+    save({ mcpServers: updated })
   }
 
   const updateMcp = (i: number, key: keyof MCPServerConfig, val: string | boolean): void => {
-    setForm((f) => ({ ...f, mcpServers: (f.mcpServers ?? []).map((s, idx) => (idx === i ? { ...s, [key]: val } : s)) }))
+    const updated = (form.mcpServers ?? []).map((s, idx) => (idx === i ? { ...s, [key]: val } : s))
+    setForm((f) => ({ ...f, mcpServers: updated }))
+    if (typeof val === 'boolean') {
+      save({ mcpServers: updated })
+    } else {
+      debouncedSave({ mcpServers: updated })
+    }
   }
 
   const updateMcpArgs = (i: number, raw: string): void => {
     setArgsText((t) => ({ ...t, [i]: raw }))
-    setForm((f) => ({ ...f, mcpServers: (f.mcpServers ?? []).map((s, idx) => (idx === i ? { ...s, args: raw.split(' ').filter(Boolean) } : s)) }))
+    const updated = (form.mcpServers ?? []).map((s, idx) => (idx === i ? { ...s, args: raw.split(' ').filter(Boolean) } : s))
+    setForm((f) => ({ ...f, mcpServers: updated }))
+    debouncedSave({ mcpServers: updated })
   }
 
   return (
@@ -335,8 +367,9 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
                               return
                             }
                             const [prov, ...rest] = val.split(':')
-                            set('defaultProvider', prov)
-                            set('defaultModel', rest.join(':'))
+                            const model = rest.join(':')
+                            setForm((f) => ({ ...f, defaultProvider: prov as Provider, defaultModel: model }))
+                            save({ defaultProvider: prov as Provider, defaultModel: model })
                           }}
                           className={`${inputCls} font-mono appearance-none pr-8`}
                           style={inputStyle}
@@ -373,7 +406,10 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
                         {(['anthropic', 'openai', 'ollama'] as Provider[]).map((p) => (
                           <button
                             key={p}
-                            onClick={() => set('defaultProvider', p)}
+                            onClick={() => {
+                              setForm((f) => ({ ...f, defaultProvider: p }))
+                              save({ defaultProvider: p })
+                            }}
                             className="flex-1 py-1.5 rounded-md text-xs font-medium transition-colors"
                             style={{
                               background: 'var(--bg)',
@@ -415,7 +451,10 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
                       <input
                         type="checkbox"
                         checked={form.voiceAutoPlay ?? false}
-                        onChange={(e) => setForm((f) => ({ ...f, voiceAutoPlay: e.target.checked }))}
+                        onChange={(e) => {
+                          setForm((f) => ({ ...f, voiceAutoPlay: e.target.checked }))
+                          save({ voiceAutoPlay: e.target.checked })
+                        }}
                       />
                     </label>
 
@@ -424,7 +463,10 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
                       {([['tts-1', 'Standard'], ['tts-1-hd', 'HD']] as const).map(([id, label]) => (
                         <button
                           key={id}
-                          onClick={() => setForm((f) => ({ ...f, voiceModel: id }))}
+                          onClick={() => {
+                            setForm((f) => ({ ...f, voiceModel: id }))
+                            save({ voiceModel: id })
+                          }}
                           className="flex-1 py-1.5 rounded-md text-xs transition-colors"
                           style={{
                             background: (form.voiceModel ?? 'tts-1') === id ? 'var(--accent)' : 'var(--surface)',
@@ -442,7 +484,10 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
                       {(['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'] as const).map((v) => (
                         <button
                           key={v}
-                          onClick={() => setForm((f) => ({ ...f, voiceVoice: v }))}
+                          onClick={() => {
+                            setForm((f) => ({ ...f, voiceVoice: v }))
+                            save({ voiceVoice: v })
+                          }}
                           className="py-1.5 rounded-md text-xs capitalize transition-colors"
                           style={{
                             background: (form.voiceVoice ?? 'nova') === v ? 'var(--accent)' : 'var(--surface)',
@@ -501,7 +546,19 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
                   {PERSONALITIES.map(({ id, label, description }) => (
                     <button
                       key={id}
-                      onClick={() => setPersonality(id)}
+                      onClick={() => {
+                        setPersonality(id)
+                        if (id !== 'custom') {
+                          setForm((f) => ({ ...f, personalityPrompt: PERSONALITY_PROMPTS[id] }))
+                          save({ personalityPrompt: PERSONALITY_PROMPTS[id] })
+                        } else if (customPrompt) {
+                          setForm((f) => ({ ...f, personalityPrompt: customPrompt }))
+                          save({ personalityPrompt: customPrompt })
+                        } else {
+                          setForm((f) => ({ ...f, personalityPrompt: '' }))
+                          save({ personalityPrompt: '' })
+                        }
+                      }}
                       className="p-3 rounded-lg text-left transition-colors"
                       style={{
                         background: 'var(--bg)',
@@ -517,7 +574,12 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
                 {personality === 'custom' && (
                   <textarea
                     value={customPrompt}
-                    onChange={(e) => setCustomPrompt(e.target.value)}
+                    onChange={(e) => {
+                      const text = e.target.value
+                      setCustomPrompt(text)
+                      setForm((f) => ({ ...f, personalityPrompt: text }))
+                      debouncedSave({ personalityPrompt: text })
+                    }}
                     rows={3}
                     placeholder="Describe how April should communicate…"
                     className={`${inputCls} resize-y mt-2`}
@@ -531,7 +593,10 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
                     {(['dark', 'light', 'system'] as const).map((t) => (
                       <button
                         key={t}
-                        onClick={() => set('theme', t)}
+                        onClick={() => {
+                          setForm((f) => ({ ...f, theme: t }))
+                          save({ theme: t })
+                        }}
                         className="flex-1 py-1.5 rounded-md text-xs capitalize transition-colors"
                         style={{
                           background: form.theme === t ? 'var(--accent)' : 'var(--bg)',
@@ -561,7 +626,11 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
                         >
                           <span className="text-xs truncate" style={{ color: 'var(--text)' }}>{m.content}</span>
                           <button
-                            onClick={() => setForm((f) => ({ ...f, memories: (f.memories ?? []).filter((x) => x.id !== m.id) }))}
+                            onClick={() => {
+                              const updated = (form.memories ?? []).filter((x) => x.id !== m.id)
+                              setForm((f) => ({ ...f, memories: updated }))
+                              save({ memories: updated })
+                            }}
                             className="shrink-0 hover:opacity-80"
                             style={{ color: 'var(--muted)' }}
                           >
@@ -590,7 +659,10 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
                     <input
                       type="checkbox"
                       checked={form.runInBackground ?? true}
-                      onChange={(e) => setForm((f) => ({ ...f, runInBackground: e.target.checked }))}
+                      onChange={(e) => {
+                        setForm((f) => ({ ...f, runInBackground: e.target.checked }))
+                        save({ runInBackground: e.target.checked })
+                      }}
                       className="ml-3"
                     />
                   </label>
@@ -620,7 +692,10 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
                   </p>
                   <HotkeyRecorder
                     value={form.quickPromptHotkey || 'CmdOrCtrl+Shift+Space'}
-                    onChange={(v) => setForm((f) => ({ ...f, quickPromptHotkey: v }))}
+                    onChange={(v) => {
+                      setForm((f) => ({ ...f, quickPromptHotkey: v }))
+                      save({ quickPromptHotkey: v })
+                    }}
                   />
                 </div>
 
@@ -643,9 +718,6 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
                         const picked = await window.api.pickDataFolder()
                         if (picked) {
                           setDataFolder(picked)
-                          // Reload settings from the new folder so Save doesn't overwrite existing data
-                          const fresh = await window.api.getSettings()
-                          if (fresh) setForm(fresh)
                         }
                       }}
                       className="px-3 py-2 rounded-md text-xs transition-colors hover:opacity-80 shrink-0"
@@ -761,28 +833,6 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
               </>
             )}
           </div>
-        </div>
-
-        {/* Footer */}
-        <div
-          className="flex justify-end gap-2 px-5 py-4 shrink-0"
-          style={{ borderTop: '1px solid var(--border)' }}
-        >
-          <button
-            onClick={onClose}
-            className="px-4 py-1.5 rounded-md text-xs transition-colors hover:opacity-80"
-            style={{ color: 'var(--muted)', background: 'var(--bg)', border: '1px solid var(--border)' }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-4 py-1.5 rounded-md text-xs transition-colors hover:opacity-80 disabled:opacity-50"
-            style={{ background: 'var(--accent)', color: 'white' }}
-          >
-            {saving ? 'Saving...' : 'Save'}
-          </button>
         </div>
       </div>
 

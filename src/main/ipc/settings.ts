@@ -5,8 +5,7 @@ import {
   setSyncedSettings,
   getDataFolder,
   ensureDataFolderExists,
-  notifyDataFolderChanged,
-  DEFAULT_SYSTEM_PROMPT
+  notifyDataFolderChanged
 } from '../store'
 import { mcpManager } from '../mcp'
 import type { Settings, LocalSettings, SyncedSettings } from '../../renderer/src/types'
@@ -23,11 +22,6 @@ const LOCAL_KEYS: (keyof LocalSettings)[] = [
 export function registerSettingsHandlers(): void {
   ipcMain.handle('settings:get', () => {
     const settings = getSettings()
-    // Backfill fields for existing installs that predate them
-    if (!settings.systemPrompt) {
-      setSyncedSettings({ systemPrompt: DEFAULT_SYSTEM_PROMPT })
-      settings.systemPrompt = DEFAULT_SYSTEM_PROMPT
-    }
     if (!settings.mcpServers) {
       setSyncedSettings({ mcpServers: [] })
       settings.mcpServers = []

@@ -150,10 +150,8 @@ export function SetupWizard(): JSX.Element {
   }
 
   async function handleFinish(): Promise<void> {
-    const base = settings?.systemPrompt ?? ''
-    const addition = personality === 'custom' ? customPrompt : PERSONALITY_PROMPTS[personality]
-    const newPrompt = base.trimEnd() + '\n\n' + addition
-    await update({ systemPrompt: newPrompt, setupCompleted: true })
+    const personalityPrompt = personality === 'custom' ? customPrompt : PERSONALITY_PROMPTS[personality]
+    await update({ personalityPrompt, setupCompleted: true })
     setStep('done')
   }
 
