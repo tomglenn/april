@@ -1,0 +1,21 @@
+{
+  "name": "@april/core",
+  "version": "0.1.0",
+  "description": "April shared core logic",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.36.3",
+    "openai": "^4.77.3",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "@types/uuid": "^10.0.0",
+    "typescript": "^5.7.3"
+  }
+}
