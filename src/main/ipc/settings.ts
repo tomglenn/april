@@ -22,6 +22,11 @@ const LOCAL_KEYS: (keyof LocalSettings)[] = [
 export function registerSettingsHandlers(): void {
   ipcMain.handle('settings:get', () => {
     const settings = getSettings()
+    if (!settings.personalityPrompt) {
+      const friendly = 'Communicate warmly and conversationally. Be encouraging and personable.'
+      setSyncedSettings({ personalityPrompt: friendly })
+      settings.personalityPrompt = friendly
+    }
     if (!settings.mcpServers) {
       setSyncedSettings({ mcpServers: [] })
       settings.mcpServers = []
