@@ -135,6 +135,7 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
       defaultModel: 'claude-sonnet-4-6',
       theme: 'dark',
       personalityPrompt: '',
+      customPersonalityPrompt: '',
       setupCompleted: true,
       userName: '',
       userLocation: '',
@@ -157,7 +158,7 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
   const [useCustomModel, setUseCustomModel] = useState(false)
   const detected = detectPersonality(settings?.personalityPrompt ?? '')
   const [personality, setPersonality] = useState<Personality | null>(detected.personality)
-  const [customPrompt, setCustomPrompt] = useState(detected.customText)
+  const [customPrompt, setCustomPrompt] = useState(settings?.customPersonalityPrompt ?? '')
 
   // --- Auto-save infrastructure ---
   const pendingRef = useRef<Partial<Settings>>({})
@@ -551,12 +552,11 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
                         if (id !== 'custom') {
                           setForm((f) => ({ ...f, personalityPrompt: PERSONALITY_PROMPTS[id] }))
                           save({ personalityPrompt: PERSONALITY_PROMPTS[id] })
-                        } else if (customPrompt) {
-                          setForm((f) => ({ ...f, personalityPrompt: customPrompt }))
-                          save({ personalityPrompt: customPrompt })
                         } else {
-                          setForm((f) => ({ ...f, personalityPrompt: '' }))
-                          save({ personalityPrompt: '' })
+                          const saved = form.customPersonalityPrompt ?? ''
+                          setCustomPrompt(saved)
+                          setForm((f) => ({ ...f, personalityPrompt: saved }))
+                          save({ personalityPrompt: saved })
                         }
                       }}
                       className="p-3 rounded-lg text-left transition-colors"
@@ -577,8 +577,8 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
                     onChange={(e) => {
                       const text = e.target.value
                       setCustomPrompt(text)
-                      setForm((f) => ({ ...f, personalityPrompt: text }))
-                      debouncedSave({ personalityPrompt: text })
+                      setForm((f) => ({ ...f, personalityPrompt: text, customPersonalityPrompt: text }))
+                      debouncedSave({ personalityPrompt: text, customPersonalityPrompt: text })
                     }}
                     rows={3}
                     placeholder="Describe how April should communicate…"

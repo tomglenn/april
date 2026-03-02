@@ -48,6 +48,7 @@ const syncedDefaults: SyncedSettings = {
   defaultModel: 'claude-sonnet-4-6',
   theme: 'dark',
   personalityPrompt: 'Communicate warmly and conversationally. Be encouraging and personable.',
+  customPersonalityPrompt: '',
   userName: '',
   userLocation: '',
   userBio: '',
