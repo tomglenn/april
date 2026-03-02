@@ -2,7 +2,7 @@
 
 A personal AI assistant for your desktop. Chat with Claude, GPT, or local models via Ollama — with built-in tools for web search, browsing, weather, and image generation.
 
-![April](resources/banner.jpg)
+![April](packages/desktop/resources/banner.jpg)
 
 ## Features
 
