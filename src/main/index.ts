@@ -31,7 +31,8 @@ import {
   setSyncedSettings,
   isOwnRecentWrite,
   DEFAULT_SYSTEM_PROMPT,
-  LEGACY_CONFIG_PATH
+  LEGACY_CONFIG_PATH,
+  setOnDataFolderChanged
 } from './store'
 import { mcpManager } from './mcp'
 import { loadAndScheduleReminders } from './reminders'
@@ -475,6 +476,11 @@ app.whenReady().then(() => {
 
   mainWindow = createWindow()
   registerQuickPromptShortcut()
+
+  // Restart the file watcher when the data folder changes
+  setOnDataFolderChanged(() => {
+    if (mainWindow && !mainWindow.isDestroyed()) startWatching(mainWindow)
+  })
 
   // Create tray if running in background
   if (settings.runInBackground) createTray()

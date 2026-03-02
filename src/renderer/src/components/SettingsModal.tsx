@@ -641,7 +641,12 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
                     <button
                       onClick={async () => {
                         const picked = await window.api.pickDataFolder()
-                        if (picked) setDataFolder(picked)
+                        if (picked) {
+                          setDataFolder(picked)
+                          // Reload settings from the new folder so Save doesn't overwrite existing data
+                          const fresh = await window.api.getSettings()
+                          if (fresh) setForm(fresh)
+                        }
                       }}
                       className="px-3 py-2 rounded-md text-xs transition-colors hover:opacity-80 shrink-0"
                       style={{ color: 'var(--accent)', background: 'rgba(59,130,246,0.08)' }}

@@ -5,6 +5,7 @@ import {
   setSyncedSettings,
   getDataFolder,
   ensureDataFolderExists,
+  notifyDataFolderChanged,
   DEFAULT_SYSTEM_PROMPT
 } from '../store'
 import { mcpManager } from '../mcp'
@@ -69,7 +70,7 @@ export function registerSettingsHandlers(): void {
     return getDataFolder()
   })
 
-  ipcMain.handle('settings:pickDataFolder', async () => {
+  ipcMain.handle('settings:pickDataFolder', async (event) => {
     const win = BrowserWindow.getFocusedWindow()
     if (!win) return null
     const result = await dialog.showOpenDialog(win, {
@@ -81,6 +82,10 @@ export function registerSettingsHandlers(): void {
     const newPath = result.filePaths[0]
     localStore.set('dataFolder', newPath)
     ensureDataFolderExists()
+    // Reload settings + conversations from the new folder
+    event.sender.send('sync:changed')
+    // Restart file watcher for the new location
+    notifyDataFolderChanged()
     return newPath
   })
 

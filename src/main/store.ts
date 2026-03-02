@@ -80,6 +80,12 @@ export function ensureDataFolderExists(): void {
   if (!existsSync(convDir)) mkdirSync(convDir, { recursive: true })
 }
 
+// ── Data-folder-changed callback (set by index.ts, called by settings.ts) ───
+
+let onDataFolderChanged: (() => void) | null = null
+export function setOnDataFolderChanged(cb: () => void): void { onDataFolderChanged = cb }
+export function notifyDataFolderChanged(): void { onDataFolderChanged?.() }
+
 // ── Own-write tracking (to suppress self-triggered fs.watch events) ─────────
 
 let lastOwnWriteTime = 0
