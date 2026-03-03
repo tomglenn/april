@@ -1,6 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { Conversation, Settings, Message, Reminder, SendMessagePayload, ChunkData, MCPServerStatus } from '@april/core'
 
+// Multiple components legitimately listen on chat:chunk concurrently
+// (useChat, App forwarding, OverlayApp), so raise the limit to avoid warnings.
+ipcRenderer.setMaxListeners(20)
+
 // ipcRenderer.off requires the exact same function reference passed to ipcRenderer.on.
 // We store the wrapper so onChunk/offChunk use the same reference.
 type ChunkWrapper = Parameters<typeof ipcRenderer.on>[1]

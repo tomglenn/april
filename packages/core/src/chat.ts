@@ -209,7 +209,8 @@ export async function runAnthropicLoop(
   signal: AbortSignal,
   openaiApiKey?: string,
   conversationId?: string,
-  anthropicApiKey?: string
+  anthropicApiKey?: string,
+  recentExchanges?: number
 ): Promise<Message> {
   const messages: Anthropic.MessageParam[] = [...baseParams.messages]
   const allBlocks: ContentBlock[] = []
@@ -227,7 +228,7 @@ export async function runAnthropicLoop(
   const baseMessageCount = messages.length
   let summarisedBase: Anthropic.MessageParam[] | null = null
   if (conversationId && anthropicApiKey) {
-    summarisedBase = await summariseAnthropicMessages(conversationId, messages, anthropicApiKey)
+    summarisedBase = await summariseAnthropicMessages(conversationId, messages, anthropicApiKey, recentExchanges)
   }
 
   let toolTurns = 0
@@ -369,7 +370,8 @@ export async function runOpenAILoop(
   tools: ToolDefinition[] = [],
   openaiApiKey?: string,
   conversationId?: string,
-  provider?: 'openai' | 'ollama'
+  provider?: 'openai' | 'ollama',
+  recentExchanges?: number
 ): Promise<Message> {
   const messages = [...initialMessages]
   const allBlocks: ContentBlock[] = []
@@ -392,7 +394,7 @@ export async function runOpenAILoop(
   const baseMessageCount = messages.length
   let summarisedBase: OpenAI.ChatCompletionMessageParam[] | null = null
   if (conversationId && openaiApiKey && provider) {
-    summarisedBase = await summariseOpenAIMessages(conversationId, messages, openaiApiKey, provider)
+    summarisedBase = await summariseOpenAIMessages(conversationId, messages, openaiApiKey, provider, recentExchanges)
   }
 
   let toolTurns = 0

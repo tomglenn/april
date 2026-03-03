@@ -2,9 +2,13 @@ import Anthropic from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
 
 const MAX_TOOL_RESULT_CHARS = 12_000
-const RECENT_MESSAGE_WINDOW = 15
-const MIN_MESSAGES_TO_SUMMARISE = 20 // ~10 user+assistant pairs in API-level messages
-const RESUMMARISE_THRESHOLD = 30 // buffer size before re-summarising (~15 pairs)
+
+function getContextThresholds(recentExchanges: number) {
+  const recentMessageWindow = recentExchanges * 2
+  const minMessagesToSummarise = recentMessageWindow + 4
+  const resummariseThreshold = recentMessageWindow * 2
+  return { recentMessageWindow, minMessagesToSummarise, resummariseThreshold }
+}
 
 // ── Summary cache (process-lifetime) ─────────────────────────────────────────
 
@@ -12,6 +16,7 @@ const summaryCache = new Map<string, {
   messageCount: number
   summary: string
   summarisedUpTo: number // index into original messages array — everything before this is in the summary
+  recentExchanges: number
 }>()
 
 const SUMMARISE_PROMPT = `Summarise this conversation history concisely. Include:
@@ -78,47 +83,57 @@ function makeSummaryMessage(summaryText: string): Anthropic.MessageParam {
 export async function summariseAnthropicMessages(
   conversationId: string,
   messages: Anthropic.MessageParam[],
-  apiKey: string
+  apiKey: string,
+  recentExchanges = 8
 ): Promise<Anthropic.MessageParam[] | null> {
-  if (messages.length < MIN_MESSAGES_TO_SUMMARISE + RECENT_MESSAGE_WINDOW) return null
+  const { recentMessageWindow, minMessagesToSummarise, resummariseThreshold } = getContextThresholds(recentExchanges)
 
-  const recentStart = messages.length - RECENT_MESSAGE_WINDOW
+  if (messages.length < minMessagesToSummarise + recentMessageWindow) return null
+
+  const recentStart = messages.length - recentMessageWindow
   const recentMessages = messages.slice(recentStart)
 
   const cached = summaryCache.get(conversationId)
 
+  // Invalidate cache if recentExchanges setting changed
+  if (cached && cached.recentExchanges !== recentExchanges) {
+    summaryCache.delete(conversationId)
+  }
+
+  const validCached = summaryCache.get(conversationId)
+
   // Cache hit: exact message count match (handles agentic loop — no work needed)
-  if (cached && cached.messageCount === messages.length) {
-    const buffer = messages.slice(cached.summarisedUpTo, recentStart)
-    return [makeSummaryMessage(cached.summary), ...buffer, ...recentMessages]
+  if (validCached && validCached.messageCount === messages.length) {
+    const buffer = messages.slice(validCached.summarisedUpTo, recentStart)
+    return [makeSummaryMessage(validCached.summary), ...buffer, ...recentMessages]
   }
 
   // Existing summary: check if buffer has grown past threshold
-  if (cached && cached.summary) {
-    const buffer = messages.slice(cached.summarisedUpTo, recentStart)
+  if (validCached && validCached.summary) {
+    const buffer = messages.slice(validCached.summarisedUpTo, recentStart)
 
-    if (buffer.length < RESUMMARISE_THRESHOLD) {
+    if (buffer.length < resummariseThreshold) {
       // Buffer small enough — keep in full, no Haiku call
-      summaryCache.set(conversationId, { ...cached, messageCount: messages.length })
-      return [makeSummaryMessage(cached.summary), ...buffer, ...recentMessages]
+      summaryCache.set(conversationId, { ...validCached, messageCount: messages.length })
+      return [makeSummaryMessage(validCached.summary), ...buffer, ...recentMessages]
     }
 
     // Buffer too large — re-summarise
     try {
       const bufferText = anthropicMessagesToText(buffer)
       const prompt = INCREMENTAL_PROMPT
-        .replace('{previous_summary}', cached.summary)
+        .replace('{previous_summary}', validCached.summary)
         .replace('{new_messages}', bufferText)
       const summaryText = await callHaikuForSummary(prompt, '', apiKey)
       if (!summaryText) return null
 
-      summaryCache.set(conversationId, { messageCount: messages.length, summary: summaryText, summarisedUpTo: recentStart })
+      summaryCache.set(conversationId, { messageCount: messages.length, summary: summaryText, summarisedUpTo: recentStart, recentExchanges })
       console.log(`[summary] Re-summarised for ${conversationId} (buffer of ${buffer.length} messages → ~${estimateTokens(summaryText)} tokens)`)
       return [makeSummaryMessage(summaryText), ...recentMessages]
     } catch (err) {
       console.warn('[summary] Failed to re-summarise, keeping buffer:', err)
-      summaryCache.set(conversationId, { ...cached, messageCount: messages.length })
-      return [makeSummaryMessage(cached.summary), ...buffer, ...recentMessages]
+      summaryCache.set(conversationId, { ...validCached, messageCount: messages.length })
+      return [makeSummaryMessage(validCached.summary), ...buffer, ...recentMessages]
     }
   }
 
@@ -129,7 +144,7 @@ export async function summariseAnthropicMessages(
     const summaryText = await callHaikuForSummary(SUMMARISE_PROMPT, oldText, apiKey)
     if (!summaryText) return null
 
-    summaryCache.set(conversationId, { messageCount: messages.length, summary: summaryText, summarisedUpTo: recentStart })
+    summaryCache.set(conversationId, { messageCount: messages.length, summary: summaryText, summarisedUpTo: recentStart, recentExchanges })
     console.log(`[summary] Generated summary for ${conversationId} (${oldMessages.length} old messages → ~${estimateTokens(summaryText)} tokens)`)
     return [makeSummaryMessage(summaryText), ...recentMessages]
   } catch (err) {
@@ -142,18 +157,21 @@ export async function summariseOpenAIMessages(
   conversationId: string,
   messages: OpenAI.ChatCompletionMessageParam[],
   apiKey: string | undefined,
-  provider: 'openai' | 'ollama'
+  provider: 'openai' | 'ollama',
+  recentExchanges = 8
 ): Promise<OpenAI.ChatCompletionMessageParam[] | null> {
   // Skip summarisation for Ollama — no cheap model available
   if (provider === 'ollama' || !apiKey) return null
+
+  const { recentMessageWindow, minMessagesToSummarise, resummariseThreshold } = getContextThresholds(recentExchanges)
 
   // Separate system messages from conversation messages for counting
   const systemMsgs = messages.filter((m) => m.role === 'system')
   const convMsgs = messages.filter((m) => m.role !== 'system')
 
-  if (convMsgs.length < MIN_MESSAGES_TO_SUMMARISE + RECENT_MESSAGE_WINDOW) return null
+  if (convMsgs.length < minMessagesToSummarise + recentMessageWindow) return null
 
-  const recentStart = convMsgs.length - RECENT_MESSAGE_WINDOW
+  const recentStart = convMsgs.length - recentMessageWindow
   const recentMessages = convMsgs.slice(recentStart)
 
   const makeOpenAISummaryMsg = (text: string): OpenAI.ChatCompletionMessageParam => ({
@@ -163,19 +181,26 @@ export async function summariseOpenAIMessages(
 
   const cached = summaryCache.get(conversationId)
 
+  // Invalidate cache if recentExchanges setting changed
+  if (cached && cached.recentExchanges !== recentExchanges) {
+    summaryCache.delete(conversationId)
+  }
+
+  const validCached = summaryCache.get(conversationId)
+
   // Cache hit: exact message count match (handles agentic loop)
-  if (cached && cached.messageCount === messages.length) {
-    const buffer = convMsgs.slice(cached.summarisedUpTo, recentStart)
-    return [...systemMsgs, makeOpenAISummaryMsg(cached.summary), ...buffer, ...recentMessages]
+  if (validCached && validCached.messageCount === messages.length) {
+    const buffer = convMsgs.slice(validCached.summarisedUpTo, recentStart)
+    return [...systemMsgs, makeOpenAISummaryMsg(validCached.summary), ...buffer, ...recentMessages]
   }
 
   // Existing summary: check if buffer has grown past threshold
-  if (cached && cached.summary) {
-    const buffer = convMsgs.slice(cached.summarisedUpTo, recentStart)
+  if (validCached && validCached.summary) {
+    const buffer = convMsgs.slice(validCached.summarisedUpTo, recentStart)
 
-    if (buffer.length < RESUMMARISE_THRESHOLD) {
-      summaryCache.set(conversationId, { ...cached, messageCount: messages.length })
-      return [...systemMsgs, makeOpenAISummaryMsg(cached.summary), ...buffer, ...recentMessages]
+    if (buffer.length < resummariseThreshold) {
+      summaryCache.set(conversationId, { ...validCached, messageCount: messages.length })
+      return [...systemMsgs, makeOpenAISummaryMsg(validCached.summary), ...buffer, ...recentMessages]
     }
 
     // Buffer too large — re-summarise
@@ -183,7 +208,7 @@ export async function summariseOpenAIMessages(
       const openai = new OpenAI({ apiKey })
       const bufferText = openaiMessagesToText(buffer)
       const prompt = INCREMENTAL_PROMPT
-        .replace('{previous_summary}', cached.summary)
+        .replace('{previous_summary}', validCached.summary)
         .replace('{new_messages}', bufferText)
       const resp = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
@@ -193,13 +218,13 @@ export async function summariseOpenAIMessages(
       const summaryText = resp.choices[0]?.message?.content?.trim() ?? ''
       if (!summaryText) return null
 
-      summaryCache.set(conversationId, { messageCount: messages.length, summary: summaryText, summarisedUpTo: recentStart })
+      summaryCache.set(conversationId, { messageCount: messages.length, summary: summaryText, summarisedUpTo: recentStart, recentExchanges })
       console.log(`[summary] Re-summarised OpenAI for ${conversationId} (buffer of ${buffer.length} messages → ~${estimateTokens(summaryText)} tokens)`)
       return [...systemMsgs, makeOpenAISummaryMsg(summaryText), ...recentMessages]
     } catch (err) {
       console.warn('[summary] Failed to re-summarise OpenAI, keeping buffer:', err)
-      summaryCache.set(conversationId, { ...cached, messageCount: messages.length })
-      return [...systemMsgs, makeOpenAISummaryMsg(cached.summary), ...buffer, ...recentMessages]
+      summaryCache.set(conversationId, { ...validCached, messageCount: messages.length })
+      return [...systemMsgs, makeOpenAISummaryMsg(validCached.summary), ...buffer, ...recentMessages]
     }
   }
 
@@ -216,7 +241,7 @@ export async function summariseOpenAIMessages(
     const summaryText = resp.choices[0]?.message?.content?.trim() ?? ''
     if (!summaryText) return null
 
-    summaryCache.set(conversationId, { messageCount: messages.length, summary: summaryText, summarisedUpTo: recentStart })
+    summaryCache.set(conversationId, { messageCount: messages.length, summary: summaryText, summarisedUpTo: recentStart, recentExchanges })
     console.log(`[summary] Generated OpenAI summary for ${conversationId} (${oldMessages.length} old messages → ~${estimateTokens(summaryText)} tokens)`)
     return [...systemMsgs, makeOpenAISummaryMsg(summaryText), ...recentMessages]
   } catch (err) {

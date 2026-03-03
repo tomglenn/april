@@ -81,6 +81,7 @@ export interface SyncedSettings {
   voiceAutoPlay: boolean
   voiceModel: string
   voiceVoice: string
+  recentContextExchanges: number
 }
 
 // Combined view for the renderer — it doesn't need to know about the split

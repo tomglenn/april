@@ -647,6 +647,32 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
                   </label>
                 </div>
 
+                {/* Recent Context */}
+                <div className="mb-5">
+                  <Label>Recent context</Label>
+                  <p className="text-xs mb-2" style={{ color: 'var(--muted)' }}>
+                    How many recent exchanges to keep in full before summarising older messages. Higher = more context but more tokens.
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="range"
+                      min={3}
+                      max={20}
+                      step={1}
+                      value={form.recentContextExchanges ?? 8}
+                      onChange={(e) => {
+                        const val = Number(e.target.value)
+                        setForm((f) => ({ ...f, recentContextExchanges: val }))
+                        debouncedSave({ recentContextExchanges: val })
+                      }}
+                      className="flex-1"
+                    />
+                    <span className="text-xs tabular-nums" style={{ color: 'var(--muted)', minWidth: '7.5em' }}>
+                      {form.recentContextExchanges ?? 8} exchanges
+                    </span>
+                  </div>
+                </div>
+
                 {/* ntfy.sh Topic */}
                 <div className="mb-5">
                   <Label>ntfy.sh Topic</Label>

@@ -68,7 +68,7 @@ export function registerChatHandlers(): void {
           baseParams.betas = ['thinking-2025-01-15']
         }
 
-        finalMsg = await runAnthropicLoop(anthropic, baseParams, sendChunk, controller.signal, settings.openaiApiKey)
+        finalMsg = await runAnthropicLoop(anthropic, baseParams, sendChunk, controller.signal, settings.openaiApiKey, payload.conversationId, settings.anthropicApiKey, settings.recentContextExchanges)
       } else if (payload.provider === 'openai' || payload.provider === 'ollama') {
         const openai = new OpenAI({
           apiKey: payload.provider === 'openai' ? settings.openaiApiKey : 'ollama',
@@ -80,7 +80,7 @@ export function registerChatHandlers(): void {
           ...messagesToOpenAIFormat(payload.messages)
         ]
 
-        finalMsg = await runOpenAILoop(openai, payload.model, openaiMessages, sendChunk, controller.signal, payload.provider === 'openai' ? availableTools : [], settings.openaiApiKey)
+        finalMsg = await runOpenAILoop(openai, payload.model, openaiMessages, sendChunk, controller.signal, payload.provider === 'openai' ? availableTools : [], settings.openaiApiKey, payload.conversationId, payload.provider as 'openai' | 'ollama', settings.recentContextExchanges)
         if (finalMsg) finalMsg.provider = payload.provider
       }
     } catch (err) {

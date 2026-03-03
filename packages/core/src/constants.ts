@@ -61,5 +61,6 @@ export const SYNCED_DEFAULTS: SyncedSettings = {
   ntfyTopic: '',
   voiceAutoPlay: false,
   voiceModel: 'tts-1',
-  voiceVoice: 'nova'
+  voiceVoice: 'nova',
+  recentContextExchanges: 8
 }
