@@ -11,6 +11,12 @@
   --text: #e8e8f0;
   --muted: #666680;
   --accent: #3b82f6;
+  --overlay-bg: rgba(13,13,15,0.92);
+  --overlay-input-bg: rgba(255,255,255,0.06);
+  --overlay-input-border: rgba(255,255,255,0.1);
+  --overlay-border: rgba(255,255,255,0.08);
+  --overlay-btn-bg: rgba(255,255,255,0.05);
+  --overlay-accent-bg: rgba(59,130,246,0.1);
 }
 
 :root.light {
@@ -21,6 +27,12 @@
   --text: #1a1a2e;
   --muted: #888899;
   --accent: #3b82f6;
+  --overlay-bg: rgba(245,245,247,0.92);
+  --overlay-input-bg: rgba(0,0,0,0.04);
+  --overlay-input-border: rgba(0,0,0,0.1);
+  --overlay-border: rgba(0,0,0,0.08);
+  --overlay-btn-bg: rgba(0,0,0,0.05);
+  --overlay-accent-bg: rgba(59,130,246,0.08);
 }
 
 * {

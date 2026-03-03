@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm'
 import { Send, RotateCcw, ExternalLink, X } from 'lucide-react'
 import type { Message, ContentBlock, Settings } from './types'
 import type { ChunkData } from './types'
+import { useSettingsStore } from './stores/settings'
 
 const CONV_ID = '__quick_prompt__'
 
@@ -20,7 +21,10 @@ export function OverlayApp(): JSX.Element {
   // Load settings + set overlay-mode class
   useEffect(() => {
     document.body.classList.add('overlay-mode')
-    window.api.getSettings().then(setSettings).catch(() => {})
+    window.api.getSettings().then((s) => {
+      setSettings(s)
+      useSettingsStore.getState().applyTheme(s.theme)
+    }).catch(() => {})
   }, [])
 
   // Auto-focus input on mount and when streaming finishes
@@ -273,11 +277,11 @@ export function OverlayApp(): JSX.Element {
       <div
         className="w-full h-full flex flex-col overflow-hidden"
         style={{
-          background: 'rgba(13,13,15,0.92)',
+          background: 'var(--overlay-bg)',
           backdropFilter: 'blur(20px)',
           WebkitBackdropFilter: 'blur(20px)',
           borderRadius: '16px',
-          border: '1px solid rgba(255,255,255,0.08)'
+          border: '1px solid var(--overlay-border)'
         }}
       >
         {/* Input area */}
@@ -292,9 +296,9 @@ export function OverlayApp(): JSX.Element {
               rows={1}
               className="flex-1 resize-none px-3 py-2.5 rounded-lg text-sm outline-none"
               style={{
-                background: 'rgba(255,255,255,0.06)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                color: '#e8e8f0',
+                background: 'var(--overlay-input-bg)',
+                border: '1px solid var(--overlay-input-border)',
+                color: 'var(--text)',
                 maxHeight: '120px',
                 fontFamily: 'inherit'
               }}
@@ -337,7 +341,7 @@ export function OverlayApp(): JSX.Element {
                 .map((b, i) => (
                   <div key={i}>
                     {msg.role === 'user' ? (
-                      <p className="text-sm" style={{ color: '#e8e8f0' }}>
+                      <p className="text-sm" style={{ color: 'var(--text)' }}>
                         {(b as { type: 'text'; text: string }).text}
                       </p>
                     ) : (
@@ -394,7 +398,7 @@ export function OverlayApp(): JSX.Element {
         {/* Bottom bar */}
         <div
           className="flex items-center justify-between px-4 py-2.5 shrink-0"
-          style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
+          style={{ borderTop: '1px solid var(--overlay-border)' }}
         >
           <span className="text-xs font-mono" style={{ color: 'var(--muted)' }}>
             {settings?.defaultModel ?? ''}
@@ -405,7 +409,7 @@ export function OverlayApp(): JSX.Element {
                 <button
                   onClick={handleOpenInApp}
                   className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-opacity hover:opacity-80"
-                  style={{ color: 'var(--accent)', background: 'rgba(59,130,246,0.1)' }}
+                  style={{ color: 'var(--accent)', background: 'var(--overlay-accent-bg)' }}
                 >
                   <ExternalLink size={12} />
                   Open in April
@@ -414,7 +418,7 @@ export function OverlayApp(): JSX.Element {
                 <button
                   onClick={handleReset}
                   className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-opacity hover:opacity-80"
-                  style={{ color: 'var(--muted)', background: 'rgba(255,255,255,0.05)' }}
+                  style={{ color: 'var(--muted)', background: 'var(--overlay-btn-bg)' }}
                 >
                   <RotateCcw size={12} />
                   New
@@ -425,7 +429,7 @@ export function OverlayApp(): JSX.Element {
             <button
               onClick={() => window.close()}
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-opacity hover:opacity-80"
-              style={{ color: 'var(--muted)', background: 'rgba(255,255,255,0.05)' }}
+              style={{ color: 'var(--muted)', background: 'var(--overlay-btn-bg)' }}
             >
               <X size={12} />
               Close
