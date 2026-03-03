@@ -4,7 +4,7 @@ import OpenAI from 'openai'
 import { DEFAULT_SYSTEM_PROMPT } from './constants'
 import { executeTool, TOOLS } from './tools'
 import { mcpManager } from './mcp'
-import { estimateTokens, truncateAnthropicMessages, truncateOpenAIMessages } from './context'
+import { estimateTokens, truncateAnthropicMessages, truncateOpenAIMessages, summariseAnthropicMessages, summariseOpenAIMessages } from './context'
 import type { ToolDefinition } from './tools'
 import type { Settings, Message, ContentBlock } from './types'
 
@@ -207,7 +207,9 @@ export async function runAnthropicLoop(
   baseParams: MessageCreateParamsStreaming,
   sendChunk: (data: ChunkData) => void,
   signal: AbortSignal,
-  openaiApiKey?: string
+  openaiApiKey?: string,
+  conversationId?: string,
+  anthropicApiKey?: string
 ): Promise<Message> {
   const messages: Anthropic.MessageParam[] = [...baseParams.messages]
   const allBlocks: ContentBlock[] = []
@@ -221,6 +223,13 @@ export async function runAnthropicLoop(
     timestamp: Date.now()
   })
 
+  // Summarise once before the agentic loop — tool iterations won't re-trigger
+  const baseMessageCount = messages.length
+  let summarisedBase: Anthropic.MessageParam[] | null = null
+  if (conversationId && anthropicApiKey) {
+    summarisedBase = await summariseAnthropicMessages(conversationId, messages, anthropicApiKey)
+  }
+
   let toolTurns = 0
   while (true) {
     // Signal renderer to reset its per-turn block indices
@@ -229,7 +238,13 @@ export async function runAnthropicLoop(
     const systemChars = typeof baseParams.system === 'string'
       ? baseParams.system.length
       : JSON.stringify(baseParams.system ?? '').length
-    const trimmedMessages = truncateAnthropicMessages(messages, baseParams.model, systemChars)
+
+    // Use pre-summarised base + any tool messages added during the loop
+    const loopMessages = messages.slice(baseMessageCount)
+    const effectiveMessages = summarisedBase
+      ? [...summarisedBase, ...loopMessages]
+      : messages
+    const trimmedMessages = truncateAnthropicMessages(effectiveMessages, baseParams.model, systemChars)
     const cachedTokens = estimateTokens(baseParams.system ?? '', baseParams.tools ?? [])
     const messageTokens = estimateTokens(trimmedMessages)
     console.log(`[api] ~${cachedTokens + messageTokens} input tokens (~${cachedTokens} cached, ~${messageTokens} uncached) → ${baseParams.model}`)
@@ -352,7 +367,9 @@ export async function runOpenAILoop(
   sendChunk: (data: ChunkData) => void,
   signal: AbortSignal,
   tools: ToolDefinition[] = [],
-  openaiApiKey?: string
+  openaiApiKey?: string,
+  conversationId?: string,
+  provider?: 'openai' | 'ollama'
 ): Promise<Message> {
   const messages = [...initialMessages]
   const allBlocks: ContentBlock[] = []
@@ -371,11 +388,23 @@ export async function runOpenAILoop(
     timestamp: Date.now()
   })
 
+  // Summarise once before the agentic loop — tool iterations won't re-trigger
+  const baseMessageCount = messages.length
+  let summarisedBase: OpenAI.ChatCompletionMessageParam[] | null = null
+  if (conversationId && openaiApiKey && provider) {
+    summarisedBase = await summariseOpenAIMessages(conversationId, messages, openaiApiKey, provider)
+  }
+
   let toolTurns = 0
   while (true) {
     if (allBlocks.length > 0) sendChunk({ type: 'turn_start' })
 
-    const trimmedMessages = truncateOpenAIMessages(messages, model)
+    // Use pre-summarised base + any tool messages added during the loop
+    const loopMessages = messages.slice(baseMessageCount)
+    const effectiveMessages = summarisedBase
+      ? [...summarisedBase, ...loopMessages]
+      : messages
+    const trimmedMessages = truncateOpenAIMessages(effectiveMessages, model)
     console.log(`[api] ~${estimateTokens(...trimmedMessages)} input tokens → ${model}`)
 
     let stream: Awaited<ReturnType<typeof openai.chat.completions.create>>

@@ -1,7 +1,229 @@
-import type Anthropic from '@anthropic-ai/sdk'
-import type OpenAI from 'openai'
+import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
 
 const MAX_TOOL_RESULT_CHARS = 12_000
+const RECENT_MESSAGE_WINDOW = 15
+const MIN_MESSAGES_TO_SUMMARISE = 20 // ~10 user+assistant pairs in API-level messages
+const RESUMMARISE_THRESHOLD = 30 // buffer size before re-summarising (~15 pairs)
+
+// ── Summary cache (process-lifetime) ─────────────────────────────────────────
+
+const summaryCache = new Map<string, {
+  messageCount: number
+  summary: string
+  summarisedUpTo: number // index into original messages array — everything before this is in the summary
+}>()
+
+const SUMMARISE_PROMPT = `Summarise this conversation history concisely. Include:
+- What the user asked for or is working on
+- Key decisions, outcomes, or facts established
+- Any ongoing context needed for future messages
+- The tone and personality the assistant has been using (e.g. casual, warm, playful, formal) so it can maintain consistency
+Keep it to 3-5 sentences. Do not include greetings or filler.`
+
+const INCREMENTAL_PROMPT = `You previously summarised a conversation. Here is your previous summary, followed by new messages to incorporate. Produce an updated summary (3-5 sentences) that covers everything.
+
+Previous summary:
+{previous_summary}
+
+New messages to incorporate:
+{new_messages}
+
+Updated summary:`
+
+async function callHaikuForSummary(prompt: string, messages: string, apiKey: string): Promise<string> {
+  const anthropic = new Anthropic({ apiKey })
+  const response = await anthropic.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 300,
+    messages: [{ role: 'user', content: prompt + '\n\n' + messages }]
+  })
+  const textBlock = response.content.find((b) => b.type === 'text')
+  return textBlock ? (textBlock as Anthropic.TextBlock).text.trim() : ''
+}
+
+function anthropicMessagesToText(messages: Anthropic.MessageParam[]): string {
+  return messages.map((msg) => {
+    const role = msg.role
+    if (typeof msg.content === 'string') return `${role}: ${msg.content}`
+    const parts = (msg.content as Anthropic.ContentBlockParam[]).map((block) => {
+      if ('text' in block && typeof block.text === 'string') return block.text
+      if ('type' in block && block.type === 'tool_use') return `[tool: ${(block as { name: string }).name}]`
+      if ('type' in block && block.type === 'tool_result') return '[tool result]'
+      return ''
+    }).filter(Boolean)
+    return `${role}: ${parts.join(' ')}`
+  }).join('\n')
+}
+
+function openaiMessagesToText(messages: OpenAI.ChatCompletionMessageParam[]): string {
+  return messages.map((msg) => {
+    const role = msg.role
+    if ('content' in msg && typeof msg.content === 'string') return `${role}: ${msg.content}`
+    if ('content' in msg && Array.isArray(msg.content)) {
+      const text = msg.content.map((p) => ('text' in p ? p.text : '')).filter(Boolean).join(' ')
+      return `${role}: ${text}`
+    }
+    return `${role}: [message]`
+  }).join('\n')
+}
+
+function makeSummaryMessage(summaryText: string): Anthropic.MessageParam {
+  return {
+    role: 'user',
+    content: `[Conversation summary]\n${summaryText}\n[End summary — continue in the same tone and style as described above]`
+  }
+}
+
+export async function summariseAnthropicMessages(
+  conversationId: string,
+  messages: Anthropic.MessageParam[],
+  apiKey: string
+): Promise<Anthropic.MessageParam[] | null> {
+  if (messages.length < MIN_MESSAGES_TO_SUMMARISE + RECENT_MESSAGE_WINDOW) return null
+
+  const recentStart = messages.length - RECENT_MESSAGE_WINDOW
+  const recentMessages = messages.slice(recentStart)
+
+  const cached = summaryCache.get(conversationId)
+
+  // Cache hit: exact message count match (handles agentic loop — no work needed)
+  if (cached && cached.messageCount === messages.length) {
+    const buffer = messages.slice(cached.summarisedUpTo, recentStart)
+    return [makeSummaryMessage(cached.summary), ...buffer, ...recentMessages]
+  }
+
+  // Existing summary: check if buffer has grown past threshold
+  if (cached && cached.summary) {
+    const buffer = messages.slice(cached.summarisedUpTo, recentStart)
+
+    if (buffer.length < RESUMMARISE_THRESHOLD) {
+      // Buffer small enough — keep in full, no Haiku call
+      summaryCache.set(conversationId, { ...cached, messageCount: messages.length })
+      return [makeSummaryMessage(cached.summary), ...buffer, ...recentMessages]
+    }
+
+    // Buffer too large — re-summarise
+    try {
+      const bufferText = anthropicMessagesToText(buffer)
+      const prompt = INCREMENTAL_PROMPT
+        .replace('{previous_summary}', cached.summary)
+        .replace('{new_messages}', bufferText)
+      const summaryText = await callHaikuForSummary(prompt, '', apiKey)
+      if (!summaryText) return null
+
+      summaryCache.set(conversationId, { messageCount: messages.length, summary: summaryText, summarisedUpTo: recentStart })
+      console.log(`[summary] Re-summarised for ${conversationId} (buffer of ${buffer.length} messages → ~${estimateTokens(summaryText)} tokens)`)
+      return [makeSummaryMessage(summaryText), ...recentMessages]
+    } catch (err) {
+      console.warn('[summary] Failed to re-summarise, keeping buffer:', err)
+      summaryCache.set(conversationId, { ...cached, messageCount: messages.length })
+      return [makeSummaryMessage(cached.summary), ...buffer, ...recentMessages]
+    }
+  }
+
+  // No cached summary: full summarisation from scratch
+  const oldMessages = messages.slice(0, recentStart)
+  try {
+    const oldText = anthropicMessagesToText(oldMessages)
+    const summaryText = await callHaikuForSummary(SUMMARISE_PROMPT, oldText, apiKey)
+    if (!summaryText) return null
+
+    summaryCache.set(conversationId, { messageCount: messages.length, summary: summaryText, summarisedUpTo: recentStart })
+    console.log(`[summary] Generated summary for ${conversationId} (${oldMessages.length} old messages → ~${estimateTokens(summaryText)} tokens)`)
+    return [makeSummaryMessage(summaryText), ...recentMessages]
+  } catch (err) {
+    console.warn('[summary] Failed to generate summary:', err)
+    return null
+  }
+}
+
+export async function summariseOpenAIMessages(
+  conversationId: string,
+  messages: OpenAI.ChatCompletionMessageParam[],
+  apiKey: string | undefined,
+  provider: 'openai' | 'ollama'
+): Promise<OpenAI.ChatCompletionMessageParam[] | null> {
+  // Skip summarisation for Ollama — no cheap model available
+  if (provider === 'ollama' || !apiKey) return null
+
+  // Separate system messages from conversation messages for counting
+  const systemMsgs = messages.filter((m) => m.role === 'system')
+  const convMsgs = messages.filter((m) => m.role !== 'system')
+
+  if (convMsgs.length < MIN_MESSAGES_TO_SUMMARISE + RECENT_MESSAGE_WINDOW) return null
+
+  const recentStart = convMsgs.length - RECENT_MESSAGE_WINDOW
+  const recentMessages = convMsgs.slice(recentStart)
+
+  const makeOpenAISummaryMsg = (text: string): OpenAI.ChatCompletionMessageParam => ({
+    role: 'user',
+    content: `[Conversation summary]\n${text}\n[End summary — continue in the same tone and style as described above]`
+  })
+
+  const cached = summaryCache.get(conversationId)
+
+  // Cache hit: exact message count match (handles agentic loop)
+  if (cached && cached.messageCount === messages.length) {
+    const buffer = convMsgs.slice(cached.summarisedUpTo, recentStart)
+    return [...systemMsgs, makeOpenAISummaryMsg(cached.summary), ...buffer, ...recentMessages]
+  }
+
+  // Existing summary: check if buffer has grown past threshold
+  if (cached && cached.summary) {
+    const buffer = convMsgs.slice(cached.summarisedUpTo, recentStart)
+
+    if (buffer.length < RESUMMARISE_THRESHOLD) {
+      summaryCache.set(conversationId, { ...cached, messageCount: messages.length })
+      return [...systemMsgs, makeOpenAISummaryMsg(cached.summary), ...buffer, ...recentMessages]
+    }
+
+    // Buffer too large — re-summarise
+    try {
+      const openai = new OpenAI({ apiKey })
+      const bufferText = openaiMessagesToText(buffer)
+      const prompt = INCREMENTAL_PROMPT
+        .replace('{previous_summary}', cached.summary)
+        .replace('{new_messages}', bufferText)
+      const resp = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        max_tokens: 300,
+        messages: [{ role: 'user', content: prompt }]
+      })
+      const summaryText = resp.choices[0]?.message?.content?.trim() ?? ''
+      if (!summaryText) return null
+
+      summaryCache.set(conversationId, { messageCount: messages.length, summary: summaryText, summarisedUpTo: recentStart })
+      console.log(`[summary] Re-summarised OpenAI for ${conversationId} (buffer of ${buffer.length} messages → ~${estimateTokens(summaryText)} tokens)`)
+      return [...systemMsgs, makeOpenAISummaryMsg(summaryText), ...recentMessages]
+    } catch (err) {
+      console.warn('[summary] Failed to re-summarise OpenAI, keeping buffer:', err)
+      summaryCache.set(conversationId, { ...cached, messageCount: messages.length })
+      return [...systemMsgs, makeOpenAISummaryMsg(cached.summary), ...buffer, ...recentMessages]
+    }
+  }
+
+  // No cached summary: full summarisation from scratch
+  const oldMessages = convMsgs.slice(0, recentStart)
+  try {
+    const openai = new OpenAI({ apiKey })
+    const oldText = openaiMessagesToText(oldMessages)
+    const resp = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      max_tokens: 300,
+      messages: [{ role: 'user', content: SUMMARISE_PROMPT + '\n\n' + oldText }]
+    })
+    const summaryText = resp.choices[0]?.message?.content?.trim() ?? ''
+    if (!summaryText) return null
+
+    summaryCache.set(conversationId, { messageCount: messages.length, summary: summaryText, summarisedUpTo: recentStart })
+    console.log(`[summary] Generated OpenAI summary for ${conversationId} (${oldMessages.length} old messages → ~${estimateTokens(summaryText)} tokens)`)
+    return [...systemMsgs, makeOpenAISummaryMsg(summaryText), ...recentMessages]
+  } catch (err) {
+    console.warn('[summary] Failed to generate OpenAI summary:', err)
+    return null
+  }
+}
 
 /** Rough token estimate: ~4 chars per token for English text. */
 export function estimateTokens(...parts: (string | unknown)[]): number {
