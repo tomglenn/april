@@ -162,15 +162,19 @@ class MCPClient {
   }
 
   async callTool(toolName: string, args: unknown): Promise<string> {
+    const MAX_RESULT_CHARS = 12_000
     const result = await this.request<{
       content?: Array<{ type: string; text?: string }>
       isError?: boolean
     }>('tools/call', { name: toolName, arguments: args })
     if (!result.content?.length) return ''
-    return result.content
+    const text = result.content
       .filter((c) => c.type === 'text')
       .map((c) => c.text ?? '')
       .join('\n')
+    return text.length > MAX_RESULT_CHARS
+      ? text.slice(0, MAX_RESULT_CHARS) + '\n\n[Result truncated]'
+      : text
   }
 
   disconnect(): void {

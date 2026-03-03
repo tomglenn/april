@@ -4,8 +4,13 @@ import OpenAI from 'openai'
 import { DEFAULT_SYSTEM_PROMPT } from './constants'
 import { executeTool, TOOLS } from './tools'
 import { mcpManager } from './mcp'
+import { estimateTokens, truncateAnthropicMessages, truncateOpenAIMessages } from './context'
 import type { ToolDefinition } from './tools'
 import type { Settings, Message, ContentBlock } from './types'
+
+const MAX_TOOL_RESULT_CHARS = 12_000
+const MAX_TOOL_TURNS = 15
+const MAX_MEMORIES = 50
 
 export interface SendMessagePayload {
   conversationId: string
@@ -176,7 +181,10 @@ export function buildSystemPrompt(settings: Settings): string {
     prompt += '\n\n## About the user\n' + parts.join(' ')
   }
 
-  const memories = settings.memories ?? []
+  const allMemories = settings.memories ?? []
+  const memories = allMemories
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .slice(0, MAX_MEMORIES)
   if (memories.length > 0) {
     prompt += '\n\n## Your memories about the user\n'
     prompt += memories.map((m) => `- ${m.content} [id: ${m.id}]`).join('\n')
@@ -213,11 +221,16 @@ export async function runAnthropicLoop(
     timestamp: Date.now()
   })
 
+  let toolTurns = 0
   while (true) {
     // Signal renderer to reset its per-turn block indices
     if (allBlocks.length > 0) sendChunk({ type: 'turn_start' })
 
-    const stream = anthropic.messages.stream({ ...baseParams, messages }, { signal })
+    const systemChars = typeof baseParams.system === 'string' ? baseParams.system.length : 0
+    const trimmedMessages = truncateAnthropicMessages(messages, baseParams.model, systemChars)
+    console.log(`[api] ~${estimateTokens(baseParams.system ?? '', trimmedMessages)} input tokens → ${baseParams.model}`)
+
+    const stream = anthropic.messages.stream({ ...baseParams, messages: trimmedMessages }, { signal })
 
     // Collect tool_use blocks from this turn so we can execute them
     const turnToolUses: Array<{ id: string; name: string; input: string }> = []
@@ -283,6 +296,13 @@ export async function runAnthropicLoop(
 
     if (stopReason !== 'tool_use' || turnToolUses.length === 0) break
 
+    toolTurns++
+    if (toolTurns >= MAX_TOOL_TURNS) {
+      allBlocks.push({ type: 'text', text: '\n\n[Stopped: reached maximum tool iterations]' })
+      sendChunk({ type: 'text_delta', text: '\n\n[Stopped: reached maximum tool iterations]' })
+      break
+    }
+
     // Build the assistant turn message for the API (using the raw finalMessage)
     const finalMsg = await stream.finalMessage()
     messages.push({ role: 'assistant', content: finalMsg.content })
@@ -303,9 +323,12 @@ export async function runAnthropicLoop(
         sendChunk({ type: 'tool_result', toolUseId: tu.id, content: successText })
         toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: successText })
       } else {
-        allBlocks.push({ type: 'tool_result', tool_use_id: tu.id, content: result.content })
-        sendChunk({ type: 'tool_result', toolUseId: tu.id, content: result.content })
-        toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: result.content })
+        const content = result.content.length > MAX_TOOL_RESULT_CHARS
+          ? result.content.slice(0, MAX_TOOL_RESULT_CHARS) + '\n\n[Result truncated]'
+          : result.content
+        allBlocks.push({ type: 'tool_result', tool_use_id: tu.id, content })
+        sendChunk({ type: 'tool_result', toolUseId: tu.id, content })
+        toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content })
       }
     }
 
@@ -344,13 +367,17 @@ export async function runOpenAILoop(
     timestamp: Date.now()
   })
 
+  let toolTurns = 0
   while (true) {
     if (allBlocks.length > 0) sendChunk({ type: 'turn_start' })
+
+    const trimmedMessages = truncateOpenAIMessages(messages, model)
+    console.log(`[api] ~${estimateTokens(...trimmedMessages)} input tokens → ${model}`)
 
     let stream: Awaited<ReturnType<typeof openai.chat.completions.create>>
     try {
       stream = await openai.chat.completions.create(
-        { model, messages, ...(openaiTools.length > 0 && { tools: openaiTools }), stream: true },
+        { model, messages: trimmedMessages, ...(openaiTools.length > 0 && { tools: openaiTools }), stream: true },
         { signal }
       )
     } catch (err: unknown) {
@@ -408,6 +435,13 @@ export async function runOpenAILoop(
 
     if (finishReason !== 'tool_calls' || Object.keys(toolCallAccumulators).length === 0) break
 
+    toolTurns++
+    if (toolTurns >= MAX_TOOL_TURNS) {
+      allBlocks.push({ type: 'text', text: '\n\n[Stopped: reached maximum tool iterations]' })
+      sendChunk({ type: 'text_delta', text: '\n\n[Stopped: reached maximum tool iterations]' })
+      break
+    }
+
     // Add assistant message with tool_calls
     const toolCalls: OpenAI.ChatCompletionMessageToolCall[] = Object.entries(toolCallAccumulators).map(
       ([index, acc]) => ({
@@ -434,9 +468,12 @@ export async function runOpenAILoop(
         sendChunk({ type: 'tool_result', toolUseId: tc.id, content: successText })
         messages.push({ role: 'tool', tool_call_id: tc.id, content: successText })
       } else {
-        allBlocks.push({ type: 'tool_result', tool_use_id: tc.id, content: result.content })
-        sendChunk({ type: 'tool_result', toolUseId: tc.id, content: result.content })
-        messages.push({ role: 'tool', tool_call_id: tc.id, content: result.content })
+        const content = result.content.length > MAX_TOOL_RESULT_CHARS
+          ? result.content.slice(0, MAX_TOOL_RESULT_CHARS) + '\n\n[Result truncated]'
+          : result.content
+        allBlocks.push({ type: 'tool_result', tool_use_id: tc.id, content })
+        sendChunk({ type: 'tool_result', toolUseId: tc.id, content })
+        messages.push({ role: 'tool', tool_call_id: tc.id, content })
       }
     }
   }
