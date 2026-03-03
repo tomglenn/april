@@ -226,9 +226,13 @@ export async function runAnthropicLoop(
     // Signal renderer to reset its per-turn block indices
     if (allBlocks.length > 0) sendChunk({ type: 'turn_start' })
 
-    const systemChars = typeof baseParams.system === 'string' ? baseParams.system.length : 0
+    const systemChars = typeof baseParams.system === 'string'
+      ? baseParams.system.length
+      : JSON.stringify(baseParams.system ?? '').length
     const trimmedMessages = truncateAnthropicMessages(messages, baseParams.model, systemChars)
-    console.log(`[api] ~${estimateTokens(baseParams.system ?? '', trimmedMessages)} input tokens → ${baseParams.model}`)
+    const cachedTokens = estimateTokens(baseParams.system ?? '', baseParams.tools ?? [])
+    const messageTokens = estimateTokens(trimmedMessages)
+    console.log(`[api] ~${cachedTokens + messageTokens} input tokens (~${cachedTokens} cached, ~${messageTokens} uncached) → ${baseParams.model}`)
 
     const stream = anthropic.messages.stream({ ...baseParams, messages: trimmedMessages }, { signal })
 

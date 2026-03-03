@@ -44,12 +44,22 @@ export function registerChatHandlers(): void {
         const anthropic = new Anthropic({ apiKey: settings.anthropicApiKey })
         const anthropicMessages = messagesToAnthropicFormat(payload.messages)
 
+        // Mark system prompt and tools for prompt caching
+        const cachedSystem = systemPrompt
+          ? [{ type: 'text' as const, text: systemPrompt, cache_control: { type: 'ephemeral' as const } }]
+          : undefined
+        const cachedTools = availableTools.map((t, i) =>
+          i === availableTools.length - 1
+            ? { ...t, cache_control: { type: 'ephemeral' as const } }
+            : t
+        )
+
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const baseParams: any = {
           model: payload.model,
           max_tokens: payload.enableThinking ? 16000 : 8096,
-          system: systemPrompt || undefined,
-          tools: availableTools,
+          system: cachedSystem,
+          tools: cachedTools,
           messages: anthropicMessages
         }
 
