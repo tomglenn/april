@@ -125,7 +125,7 @@ export function Sidebar({ onOpenSettings }: SidebarProps): JSX.Element {
     ? conversations.filter((c) => c.title.toLowerCase().includes(query.toLowerCase()))
     : conversations
 
-  const isMac = navigator.platform.toLowerCase().includes('mac')
+  const isMac = navigator.userAgent.toLowerCase().includes('mac')
 
   return (
     <div

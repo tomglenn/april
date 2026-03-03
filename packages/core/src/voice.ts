@@ -19,6 +19,7 @@ export async function synthesizeSpeech(
   voiceVoice?: string
 ): Promise<ArrayBuffer> {
   const openai = new OpenAI({ apiKey })
+  if (text.length > 4096) console.warn(`TTS: truncating ${text.length} chars to 4096`)
   const truncated = text.slice(0, 4096)
 
   const response = await openai.audio.speech.create({

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
-import { MCP_CATALOG, buildServerConfig } from '../data/mcpCatalog'
+import { MCP_CATALOG, buildServerConfig } from '@april/core'
 import type { MCPServerConfig } from '../types'
 
 const CATEGORY_EMOJI: Record<string, string> = {

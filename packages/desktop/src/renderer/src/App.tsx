@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Sidebar } from './components/Sidebar'
 import { ConversationView } from './components/ConversationView'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { SettingsModal } from './components/SettingsModal'
 import { SetupWizard } from './components/SetupWizard'
 import { useConversationsStore } from './stores/conversations'
@@ -104,7 +105,9 @@ export default function App(): JSX.Element {
   return (
     <div className="flex h-full overflow-hidden" style={{ background: 'var(--bg)' }}>
       <Sidebar onOpenSettings={() => setShowSettings(true)} />
-      <ConversationView onOpenSettings={() => setShowSettings(true)} />
+      <ErrorBoundary>
+        <ConversationView onOpenSettings={() => setShowSettings(true)} />
+      </ErrorBoundary>
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       {showWizard && <SetupWizard />}
     </div>

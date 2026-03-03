@@ -7,6 +7,7 @@ import { MCPCatalog } from './MCPCatalog'
 import { SensitiveInput } from './SensitiveInput'
 import { useMultiProviderModels } from '../hooks/useMultiProviderModels'
 import type { Provider } from '../types'
+import { LOCAL_DEFAULTS, SYNCED_DEFAULTS } from '@april/core'
 
 type Personality = 'professional' | 'friendly' | 'creative' | 'concise' | 'custom'
 type Tab = 'general' | 'personalisation' | 'advanced'
@@ -127,29 +128,7 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
   const { settings, update } = useSettingsStore()
   const [tab, setTab] = useState<Tab>('general')
   const [form, setForm] = useState<Settings>(
-    settings ?? {
-      anthropicApiKey: '',
-      openaiApiKey: '',
-      ollamaBaseUrl: 'http://localhost:11434',
-      defaultProvider: 'anthropic',
-      defaultModel: 'claude-sonnet-4-6',
-      theme: 'dark',
-      personalityPrompt: '',
-      customPersonalityPrompt: '',
-      setupCompleted: true,
-      userName: '',
-      userLocation: '',
-      userBio: '',
-      mcpServers: [],
-      memories: [],
-      dataFolder: '',
-      quickPromptHotkey: 'CmdOrCtrl+Shift+Space',
-      runInBackground: true,
-      ntfyTopic: '',
-      voiceAutoPlay: false,
-      voiceModel: 'tts-1',
-      voiceVoice: 'nova'
-    }
+    settings ?? { ...LOCAL_DEFAULTS, ...SYNCED_DEFAULTS, dataFolder: '', setupCompleted: true }
   )
   const [dataFolder, setDataFolder] = useState('')
   const [mcpStatus, setMcpStatus] = useState<MCPServerStatus[]>([])

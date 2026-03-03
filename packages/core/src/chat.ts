@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import type { MessageCreateParamsStreaming } from '@anthropic-ai/sdk/resources/messages'
 import OpenAI from 'openai'
 import { DEFAULT_SYSTEM_PROMPT } from './constants'
 import { executeTool, TOOLS } from './tools'
@@ -37,17 +38,6 @@ export interface ChunkData {
   imageData?: string
   imageMediaType?: string
   conversationId?: string
-}
-
-// ── Image result parser ────────────────────────────────────────────────────────
-
-export function parseImageResult(result: string): { mediaType: string; data: string } | null {
-  if (!result.startsWith('data:image/')) return null
-  const commaIdx = result.indexOf(',')
-  if (commaIdx === -1) return null
-  const mediaType = result.slice(5, commaIdx).split(';')[0]
-  const data = result.slice(commaIdx + 1)
-  return { mediaType, data }
 }
 
 // ── Format converters ─────────────────────────────────────────────────────────
@@ -206,14 +196,12 @@ You have persistent memory across conversations.${memories.length > 0 ? ' Your c
 
 export async function runAnthropicLoop(
   anthropic: Anthropic,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  baseParams: any,
+  baseParams: MessageCreateParamsStreaming,
   sendChunk: (data: ChunkData) => void,
   signal: AbortSignal,
   openaiApiKey?: string
 ): Promise<Message> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const messages: any[] = [...baseParams.messages]
+  const messages: Anthropic.MessageParam[] = [...baseParams.messages]
   const allBlocks: ContentBlock[] = []
 
   const makePartialMessage = (): Message => ({
@@ -306,19 +294,18 @@ export async function runAnthropicLoop(
         try { return JSON.parse(tu.input || '{}') } catch { return {} }
       })()
       const result = await executeTool(tu.name, input, openaiApiKey)
-      const img = parseImageResult(result)
 
-      if (img) {
-        allBlocks.push({ type: 'image', mediaType: img.mediaType, data: img.data })
-        sendChunk({ type: 'image_block', imageData: img.data, imageMediaType: img.mediaType })
+      if (result.type === 'image') {
+        allBlocks.push({ type: 'image', mediaType: result.mediaType, data: result.data })
+        sendChunk({ type: 'image_block', imageData: result.data, imageMediaType: result.mediaType })
         const successText = 'Image generated successfully.'
         allBlocks.push({ type: 'tool_result', tool_use_id: tu.id, content: successText })
         sendChunk({ type: 'tool_result', toolUseId: tu.id, content: successText })
         toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: successText })
       } else {
-        allBlocks.push({ type: 'tool_result', tool_use_id: tu.id, content: result })
-        sendChunk({ type: 'tool_result', toolUseId: tu.id, content: result })
-        toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: result })
+        allBlocks.push({ type: 'tool_result', tool_use_id: tu.id, content: result.content })
+        sendChunk({ type: 'tool_result', toolUseId: tu.id, content: result.content })
+        toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: result.content })
       }
     }
 
@@ -437,17 +424,20 @@ export async function runOpenAILoop(
         try { return JSON.parse(tc.function.arguments) } catch { return {} }
       })()
       const result = await executeTool(tc.function.name, input, openaiApiKey)
-      const img = parseImageResult(result)
-      const toolContent = img ? 'Image generated successfully.' : result
 
       allBlocks.push({ type: 'tool_use', id: tc.id, name: tc.function.name, input })
-      if (img) {
-        allBlocks.push({ type: 'image', mediaType: img.mediaType, data: img.data })
-        sendChunk({ type: 'image_block', imageData: img.data, imageMediaType: img.mediaType })
+      if (result.type === 'image') {
+        allBlocks.push({ type: 'image', mediaType: result.mediaType, data: result.data })
+        sendChunk({ type: 'image_block', imageData: result.data, imageMediaType: result.mediaType })
+        const successText = 'Image generated successfully.'
+        allBlocks.push({ type: 'tool_result', tool_use_id: tc.id, content: successText })
+        sendChunk({ type: 'tool_result', toolUseId: tc.id, content: successText })
+        messages.push({ role: 'tool', tool_call_id: tc.id, content: successText })
+      } else {
+        allBlocks.push({ type: 'tool_result', tool_use_id: tc.id, content: result.content })
+        sendChunk({ type: 'tool_result', toolUseId: tc.id, content: result.content })
+        messages.push({ role: 'tool', tool_call_id: tc.id, content: result.content })
       }
-      allBlocks.push({ type: 'tool_result', tool_use_id: tc.id, content: toolContent })
-      sendChunk({ type: 'tool_result', toolUseId: tc.id, content: toolContent })
-      messages.push({ role: 'tool', tool_call_id: tc.id, content: toolContent })
     }
   }
 

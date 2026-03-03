@@ -2,6 +2,10 @@ import OpenAI from 'openai'
 import { getPlatform } from './platform'
 import { mcpManager } from './mcp'
 
+export type ToolResult =
+  | { type: 'text'; content: string }
+  | { type: 'image'; mediaType: string; data: string }
+
 export interface ToolDefinition {
   name: string
   description: string
@@ -355,7 +359,7 @@ async function getWeather(location: string): Promise<string> {
 
 // ── Image generation ──────────────────────────────────────────────────────────
 
-async function generateImage(input: unknown, openaiApiKey: string): Promise<string> {
+async function generateImage(input: unknown, openaiApiKey: string): Promise<ToolResult> {
   const {
     prompt,
     size = '1024x1024',
@@ -364,7 +368,7 @@ async function generateImage(input: unknown, openaiApiKey: string): Promise<stri
   } = input as { prompt: string; size?: string; quality?: string; transparent?: boolean }
 
   if (!openaiApiKey) {
-    return 'Tool error: An OpenAI API key is required for image generation. Please add yours in Settings.'
+    return { type: 'text', content: 'Tool error: An OpenAI API key is required for image generation. Please add yours in Settings.' }
   }
 
   const openai = new OpenAI({ apiKey: openaiApiKey })
@@ -381,14 +385,14 @@ async function generateImage(input: unknown, openaiApiKey: string): Promise<stri
   })
 
   const b64 = response.data?.[0]?.b64_json
-  if (!b64) return 'Tool error: No image data returned.'
-  return `data:image/png;base64,${b64}`
+  if (!b64) return { type: 'text', content: 'Tool error: No image data returned.' }
+  return { type: 'image', mediaType: 'image/png', data: b64 }
 }
 
 // ── Reminder tools ────────────────────────────────────────────────────────
 
-function scheduleReminderTool(input: unknown): string {
-  const { addReminder } = require('./reminders') as typeof import('./reminders')
+async function scheduleReminderTool(input: unknown): Promise<string> {
+  const { addReminder } = await import('./reminders')
   const { message, delay_minutes } = input as { message: string; delay_minutes: number }
   const reminder = addReminder(message, delay_minutes)
   const fireDate = new Date(reminder.fireAt)
@@ -396,8 +400,8 @@ function scheduleReminderTool(input: unknown): string {
   return `Reminder set for ${timeStr}: ${message}`
 }
 
-function cancelReminderTool(input: unknown): string {
-  const { cancelReminder } = require('./reminders') as typeof import('./reminders')
+async function cancelReminderTool(input: unknown): Promise<string> {
+  const { cancelReminder } = await import('./reminders')
   const { reminder_id } = input as { reminder_id: string }
   const ok = cancelReminder(reminder_id)
   return ok ? 'Reminder cancelled.' : 'Reminder not found.'
@@ -429,13 +433,13 @@ function deleteMemoryTool(input: unknown): string {
 
 // ── Executor ─────────────────────────────────────────────────────────────────
 
-export async function executeTool(name: string, input: unknown, openaiApiKey?: string): Promise<string> {
+export async function executeTool(name: string, input: unknown, openaiApiKey?: string): Promise<ToolResult> {
   // MCP tools are namespaced as "mcp__<serverName>__<toolName>"
   if (name.startsWith('mcp__')) {
     try {
-      return await mcpManager.callTool(name, input)
+      return { type: 'text', content: await mcpManager.callTool(name, input) }
     } catch (err) {
-      return `Tool error: ${err instanceof Error ? err.message : String(err)}`
+      return { type: 'text', content: `Tool error: ${err instanceof Error ? err.message : String(err)}` }
     }
   }
 
@@ -443,25 +447,25 @@ export async function executeTool(name: string, input: unknown, openaiApiKey?: s
   try {
     switch (name) {
       case 'web_search':
-        return await webSearch(inp.query)
+        return { type: 'text', content: await webSearch(inp.query) }
       case 'browse_url':
-        return await browseUrl(inp.url)
+        return { type: 'text', content: await browseUrl(inp.url) }
       case 'get_weather':
-        return await getWeather(inp.location)
+        return { type: 'text', content: await getWeather(inp.location) }
       case 'generate_image':
         return generateImage(input, openaiApiKey ?? '')
       case 'schedule_reminder':
-        return scheduleReminderTool(input)
+        return { type: 'text', content: await scheduleReminderTool(input) }
       case 'cancel_reminder':
-        return cancelReminderTool(input)
+        return { type: 'text', content: await cancelReminderTool(input) }
       case 'save_memory':
-        return saveMemoryTool(input)
+        return { type: 'text', content: saveMemoryTool(input) }
       case 'delete_memory':
-        return deleteMemoryTool(input)
+        return { type: 'text', content: deleteMemoryTool(input) }
       default:
-        return `Unknown tool: ${name}`
+        return { type: 'text', content: `Unknown tool: ${name}` }
     }
   } catch (err) {
-    return `Tool error: ${err instanceof Error ? err.message : String(err)}`
+    return { type: 'text', content: `Tool error: ${err instanceof Error ? err.message : String(err)}` }
   }
 }
