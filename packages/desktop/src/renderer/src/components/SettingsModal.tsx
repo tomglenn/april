@@ -415,6 +415,19 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
                   )}
                 </div>
 
+                {/* Quick Switcher Hotkey */}
+                <div className="mb-4">
+                  <div className="text-xs font-medium mb-0.5" style={{ color: 'var(--muted)' }}>Quick Switcher</div>
+                  <div className="text-xs mb-2" style={{ color: 'var(--muted)', opacity: 0.6 }}>Open the quick conversation switcher</div>
+                  <HotkeyRecorder
+                    value={form.quickSwitcherHotkey || 'CmdOrCtrl+K'}
+                    onChange={(v) => {
+                      setForm((f) => ({ ...f, quickSwitcherHotkey: v }))
+                      debouncedSave({ quickSwitcherHotkey: v })
+                    }}
+                  />
+                </div>
+
                 {/* OpenAI Features — shown when OpenAI key is set */}
                 {form.openaiApiKey && (
                   <div

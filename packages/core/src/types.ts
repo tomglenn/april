@@ -76,6 +76,7 @@ export interface SyncedSettings {
   mcpServers: MCPServerConfig[]
   memories: Memory[]
   quickPromptHotkey: string
+  quickSwitcherHotkey: string
   runInBackground: boolean
   ntfyTopic: string
   voiceAutoPlay: boolean

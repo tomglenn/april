@@ -57,6 +57,7 @@ export const SYNCED_DEFAULTS: SyncedSettings = {
   mcpServers: [],
   memories: [],
   quickPromptHotkey: 'CmdOrCtrl+Shift+Space',
+  quickSwitcherHotkey: 'CmdOrCtrl+K',
   runInBackground: true,
   ntfyTopic: '',
   voiceAutoPlay: false,
