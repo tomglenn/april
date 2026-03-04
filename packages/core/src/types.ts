@@ -7,6 +7,8 @@ export interface Conversation {
   updatedAt: number
   messages: Message[]
   mcpServers: MCPServerConfig[]
+  model?: string     // per-conversation model override
+  provider?: Provider // per-conversation provider override
 }
 
 export interface Message {

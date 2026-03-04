@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Conversation, Message } from '../types'
+import type { Conversation, Message, Provider } from '../types'
 
 interface ConversationsState {
   conversations: Conversation[]
@@ -16,6 +16,8 @@ interface ConversationsState {
   updateLastMessage: (conversationId: string, updater: (msg: Message) => Message) => void
   updateMessageById: (conversationId: string, messageId: string, updater: (msg: Message) => Message) => void
   removeMessageById: (conversationId: string, messageId: string) => void
+  setConversationModel: (id: string, model: string, provider: Provider) => void
+  clearConversationModel: (id: string) => void
 
   // Async actions
   load: () => Promise<void>
@@ -94,6 +96,26 @@ export const useConversationsStore = create<ConversationsState>((set, get) => ({
         return { ...c, messages: c.messages.filter((m) => m.id !== messageId) }
       })
     }))
+  },
+
+  setConversationModel: (id, model, provider) => {
+    set((state) => ({
+      conversations: state.conversations.map((c) =>
+        c.id === id ? { ...c, model, provider } : c
+      )
+    }))
+    const updated = get().conversations.find((c) => c.id === id)
+    if (updated) window.api.updateConversation(updated)
+  },
+
+  clearConversationModel: (id) => {
+    set((state) => ({
+      conversations: state.conversations.map((c) =>
+        c.id === id ? { ...c, model: undefined, provider: undefined } : c
+      )
+    }))
+    const updated = get().conversations.find((c) => c.id === id)
+    if (updated) window.api.updateConversation(updated)
   },
 
   load: async () => {
