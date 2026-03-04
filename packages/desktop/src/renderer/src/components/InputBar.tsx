@@ -9,7 +9,6 @@ import {
   ChangeEvent
 } from 'react'
 import { Send, Square, Paperclip, X, Mic, Loader } from 'lucide-react'
-import { useSettingsStore } from '../stores/settings'
 import { useConversationsStore } from '../stores/conversations'
 import type { ImageAttachment } from '../types'
 
@@ -17,6 +16,8 @@ interface Props {
   onSend: (text: string, model: string, provider: string, images?: ImageAttachment[]) => void
   onStop: () => void
   isStreaming: boolean
+  model: string
+  provider: string
   missingKey?: boolean
   prefill?: string
   hasOpenAIKey?: boolean
@@ -59,8 +60,7 @@ async function resizeToAttachment(file: File): Promise<ImageAttachment> {
   })
 }
 
-export function InputBar({ onSend, onStop, isStreaming, missingKey, prefill, hasOpenAIKey, isRecording, isTranscribing, recordingSeconds, onMicClick }: Props): JSX.Element {
-  const { settings } = useSettingsStore()
+export function InputBar({ onSend, onStop, isStreaming, model, provider, missingKey, prefill, hasOpenAIKey, isRecording, isTranscribing, recordingSeconds, onMicClick }: Props): JSX.Element {
   const { activeId } = useConversationsStore()
   const [text, setText] = useState('')
 
@@ -141,8 +141,8 @@ export function InputBar({ onSend, onStop, isStreaming, missingKey, prefill, has
 
   const handleSend = (): void => {
     const trimmed = text.trim()
-    if ((!trimmed && images.length === 0) || isStreaming || !settings) return
-    onSend(trimmed, settings.defaultModel, settings.defaultProvider, images.length > 0 ? images : undefined)
+    if ((!trimmed && images.length === 0) || isStreaming || !model) return
+    onSend(trimmed, model, provider, images.length > 0 ? images : undefined)
     setText('')
     setImages([])
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
@@ -155,7 +155,7 @@ export function InputBar({ onSend, onStop, isStreaming, missingKey, prefill, has
     }
   }
 
-  const canSend = (text.trim().length > 0 || images.length > 0) && !isStreaming && !!settings && !missingKey
+  const canSend = (text.trim().length > 0 || images.length > 0) && !isStreaming && !!model && !missingKey
 
   return (
     <div
