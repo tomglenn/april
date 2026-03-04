@@ -4,7 +4,7 @@ import { ConversationView } from './components/ConversationView'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { SettingsModal } from './components/SettingsModal'
 import { SetupWizard } from './components/SetupWizard'
-import { QuickSwitcher } from './components/QuickSwitcher'
+import { CommandPalette } from './components/CommandPalette'
 import { useConversationsStore } from './stores/conversations'
 import { useSettingsStore } from './stores/settings'
 import type { ChunkData } from './types'
@@ -134,7 +134,7 @@ export default function App(): JSX.Element {
         <ConversationView onOpenSettings={() => setShowSettings(true)} />
       </ErrorBoundary>
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
-      {showQuickSwitcher && settings && <QuickSwitcher onClose={() => setShowQuickSwitcher(false)} />}
+      {showQuickSwitcher && settings && <CommandPalette onClose={() => setShowQuickSwitcher(false)} />}
       {showWizard && <SetupWizard />}
     </div>
   )
