@@ -1,5 +1,5 @@
 import { useEffect, useRef, useMemo, useState, useCallback } from 'react'
-import { MessageSquare, AlertCircle, Copy, Check, Pin, TriangleAlert } from 'lucide-react'
+import { MessageSquare, AlertCircle, Copy, Check, Pin, TriangleAlert, PanelLeftOpen } from 'lucide-react'
 import { Message } from './Message'
 import { InputBar } from './InputBar'
 import { useConversationsStore } from '../stores/conversations'
@@ -35,9 +35,11 @@ const SUGGESTIONS = [
 
 interface Props {
   onOpenSettings: () => void
+  sidebarCollapsed: boolean
+  onExpandSidebar: () => void
 }
 
-export function ConversationView({ onOpenSettings }: Props): JSX.Element {
+export function ConversationView({ onOpenSettings, sidebarCollapsed, onExpandSidebar }: Props): JSX.Element {
   const { activeId, conversations } = useConversationsStore()
   const { settings } = useSettingsStore()
   const { streamingState, sendMessage, stopStreaming, retryMessage } = useChat(activeId)
@@ -155,9 +157,20 @@ export function ConversationView({ onOpenSettings }: Props): JSX.Element {
     return (
       <div className="flex-1 flex flex-col" style={{ background: 'var(--bg)' }}>
         <div
-          className="drag-region flex items-center px-4 shrink-0"
-          style={{ height: 38, borderBottom: '1px solid var(--border)' }}
-        />
+          className="drag-region flex items-center shrink-0"
+          style={{ height: 38, borderBottom: '1px solid var(--border)', paddingLeft: sidebarCollapsed ? 72 : 16, paddingRight: 16 }}
+        >
+          {sidebarCollapsed && (
+            <button
+              onClick={onExpandSidebar}
+              className="no-drag p-1.5 rounded-md hover:opacity-80 transition-opacity"
+              style={{ color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer' }}
+              title="Show Sidebar (⌘B)"
+            >
+              <PanelLeftOpen size={15} />
+            </button>
+          )}
+        </div>
         <div className="flex-1 flex flex-col items-center justify-center gap-2">
           <MessageSquare size={36} style={{ color: 'var(--border)' }} />
           <p className="text-sm" style={{ color: 'var(--muted)' }}>No conversation selected</p>
@@ -176,10 +189,20 @@ export function ConversationView({ onOpenSettings }: Props): JSX.Element {
     <div className="flex-1 flex flex-col overflow-hidden" style={{ background: 'var(--bg)' }}>
       {/* Top bar */}
       <div
-        className="drag-region flex items-center justify-between px-4 shrink-0 select-none"
-        style={{ height: 38, borderBottom: '1px solid var(--border)' }}
+        className="drag-region flex items-center justify-between shrink-0 select-none"
+        style={{ height: 38, borderBottom: '1px solid var(--border)', paddingLeft: sidebarCollapsed ? 72 : 16, paddingRight: 16 }}
       >
         <div className="flex items-center gap-2">
+          {sidebarCollapsed && (
+            <button
+              onClick={onExpandSidebar}
+              className="no-drag p-1.5 rounded-md hover:opacity-80 transition-opacity"
+              style={{ color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer', marginRight: 4 }}
+              title="Show Sidebar (⌘B)"
+            >
+              <PanelLeftOpen size={15} />
+            </button>
+          )}
           <span className="text-xs" style={{ color: 'var(--muted)', opacity: 0.7 }}>
             {MODEL_CATALOG.find((m) => m.model === effectiveModel)?.label ?? effectiveModel}
           </span>

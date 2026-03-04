@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Sidebar } from './components/Sidebar'
 import { ConversationView } from './components/ConversationView'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -33,6 +33,25 @@ export default function App(): JSX.Element {
   const { load: loadSettings, settings } = useSettingsStore()
   const [showSettings, setShowSettings] = useState(false)
   const [showQuickSwitcher, setShowQuickSwitcher] = useState(false)
+  const [sidebarWidth, setSidebarWidth] = useState(() =>
+    Number(localStorage.getItem('sidebar-width') || 240)
+  )
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
+    localStorage.getItem('sidebar-collapsed') === 'true'
+  )
+
+  const toggleSidebar = useCallback(() => {
+    setSidebarCollapsed(v => {
+      const next = !v
+      localStorage.setItem('sidebar-collapsed', String(next))
+      return next
+    })
+  }, [])
+
+  const handleWidthChange = useCallback((w: number) => {
+    setSidebarWidth(w)
+    localStorage.setItem('sidebar-width', String(w))
+  }, [])
 
   useEffect(() => {
     loadSettings()
@@ -116,6 +135,7 @@ export default function App(): JSX.Element {
       if (!mod) return
       if (e.key === 'n') { e.preventDefault(); createNew() }
       if (e.key === ',') { e.preventDefault(); setShowSettings(true) }
+      if (e.key === 'b') { e.preventDefault(); toggleSidebar() }
       if (settings && matchesAccelerator(e, settings.quickSwitcherHotkey)) {
         e.preventDefault()
         setShowQuickSwitcher(true)
@@ -123,15 +143,25 @@ export default function App(): JSX.Element {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [createNew, settings])
+  }, [createNew, settings, toggleSidebar])
 
   const showWizard = settings !== null && !settings.setupCompleted
 
   return (
     <div className="flex h-full overflow-hidden" style={{ background: 'var(--bg)' }}>
-      <Sidebar onOpenSettings={() => setShowSettings(true)} />
+      <Sidebar
+        onOpenSettings={() => setShowSettings(true)}
+        width={sidebarWidth}
+        collapsed={sidebarCollapsed}
+        onCollapse={toggleSidebar}
+        onWidthChange={handleWidthChange}
+      />
       <ErrorBoundary>
-        <ConversationView onOpenSettings={() => setShowSettings(true)} />
+        <ConversationView
+          onOpenSettings={() => setShowSettings(true)}
+          sidebarCollapsed={sidebarCollapsed}
+          onExpandSidebar={toggleSidebar}
+        />
       </ErrorBoundary>
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       {showQuickSwitcher && settings && <CommandPalette onClose={() => setShowQuickSwitcher(false)} />}

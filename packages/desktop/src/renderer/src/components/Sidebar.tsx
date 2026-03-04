@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react'
-import { SquarePen, Settings, MessageSquare, Trash2, Pencil, Check, X, Search, Bell } from 'lucide-react'
+import { SquarePen, Settings, MessageSquare, Trash2, Pencil, Check, X, Search, Bell, PanelLeftClose } from 'lucide-react'
 import { useConversationsStore } from '../stores/conversations'
 import { RemindersPanel } from './RemindersPanel'
 import type { Conversation, Reminder } from '../types'
 
 interface SidebarProps {
   onOpenSettings: () => void
+  width: number
+  collapsed: boolean
+  onCollapse: () => void
+  onWidthChange: (w: number) => void
 }
 
 function DeleteModal({
@@ -153,13 +157,14 @@ function ConversationItem({
   )
 }
 
-export function Sidebar({ onOpenSettings }: SidebarProps): JSX.Element {
+export function Sidebar({ onOpenSettings, width, collapsed, onCollapse, onWidthChange }: SidebarProps): JSX.Element {
   const { conversations, activeId, setActiveId, createNew, deleteConv, renameConv } =
     useConversationsStore()
   const [query, setQuery] = useState('')
   const [showReminders, setShowReminders] = useState(false)
   const [reminderCount, setReminderCount] = useState(0)
   const [pendingDelete, setPendingDelete] = useState<Conversation | null>(null)
+  const [isResizing, setIsResizing] = useState(false)
 
   useEffect(() => {
     const fetch = (): void => {
@@ -183,18 +188,29 @@ export function Sidebar({ onOpenSettings }: SidebarProps): JSX.Element {
 
   return (
     <div
-      className="flex flex-col h-full"
+      className="flex flex-col h-full relative"
       style={{
-        width: '240px',
+        width: collapsed ? 0 : width,
+        overflow: 'hidden',
+        transition: isResizing ? 'none' : 'width 200ms ease',
         background: 'var(--surface)',
-        borderRight: '1px solid var(--border)'
+        borderRight: '1px solid var(--border)',
+        flexShrink: 0,
       }}
     >
-      {/* Title bar drag region with new chat button */}
+      {/* Title bar drag region with collapse + new chat buttons */}
       <div
-        className="drag-region shrink-0 flex items-center justify-end px-2"
+        className="drag-region shrink-0 flex items-center justify-end gap-0.5 px-2"
         style={{ height: 38 }}
       >
+        <button
+          onClick={onCollapse}
+          className="no-drag p-1.5 rounded-md hover:opacity-80 transition-opacity"
+          style={{ color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer' }}
+          title="Hide Sidebar (⌘B)"
+        >
+          <PanelLeftClose size={15} />
+        </button>
         <button
           onClick={() => createNew()}
           className="no-drag p-1.5 rounded-md hover:opacity-80 transition-opacity"
@@ -288,6 +304,29 @@ export function Sidebar({ onOpenSettings }: SidebarProps): JSX.Element {
           onCancel={() => setPendingDelete(null)}
         />
       )}
+
+      {/* Resize handle */}
+      <div
+        className="absolute top-0 right-0 h-full"
+        style={{ width: 4, cursor: 'col-resize', zIndex: 10 }}
+        onMouseDown={(e) => {
+          e.preventDefault()
+          setIsResizing(true)
+          const startX = e.clientX
+          const startWidth = width
+          const onMove = (e: MouseEvent): void => {
+            const next = Math.min(480, Math.max(160, startWidth + e.clientX - startX))
+            onWidthChange(next)
+          }
+          const onUp = (): void => {
+            setIsResizing(false)
+            document.removeEventListener('mousemove', onMove)
+            document.removeEventListener('mouseup', onUp)
+          }
+          document.addEventListener('mousemove', onMove)
+          document.addEventListener('mouseup', onUp)
+        }}
+      />
     </div>
   )
 }

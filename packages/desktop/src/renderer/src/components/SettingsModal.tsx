@@ -205,6 +205,14 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
   }, [])
 
   useEffect(() => {
+    const handler = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') { e.stopPropagation(); onClose() }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
+
+  useEffect(() => {
     if (tab !== 'advanced') return
     window.api.getMcpStatus().then(setMcpStatus).catch(() => {})
     const id = setInterval(() => {
