@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Settings, MessageSquare, Trash2, Pencil, Check, X, Search, Bell } from 'lucide-react'
+import { SquarePen, Settings, MessageSquare, Trash2, Pencil, Check, X, Search, Bell } from 'lucide-react'
 import { useConversationsStore } from '../stores/conversations'
 import { RemindersPanel } from './RemindersPanel'
 import type { Conversation, Reminder } from '../types'
@@ -8,17 +8,65 @@ interface SidebarProps {
   onOpenSettings: () => void
 }
 
+function DeleteModal({
+  title,
+  onConfirm,
+  onCancel
+}: {
+  title: string
+  onConfirm: () => void
+  onCancel: () => void
+}): JSX.Element {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: 'rgba(0,0,0,0.5)' }}
+      onClick={onCancel}
+    >
+      <div
+        className="rounded-lg p-5 flex flex-col gap-4 shadow-xl"
+        style={{ background: 'var(--surface)', border: '1px solid var(--border)', width: 320 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex flex-col gap-1">
+          <span className="text-sm font-medium" style={{ color: 'var(--text)' }}>Delete conversation?</span>
+          <span className="text-xs" style={{ color: 'var(--muted)' }}>
+            "{title}" will be permanently deleted.
+          </span>
+        </div>
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="px-3 py-1.5 rounded-md text-xs hover:opacity-80 transition-opacity"
+            style={{ background: 'var(--surface-alt)', color: 'var(--text)', border: '1px solid var(--border)' }}
+          >
+            Cancel
+          </button>
+          <button
+            autoFocus
+            onClick={onConfirm}
+            className="px-3 py-1.5 rounded-md text-xs hover:opacity-80 transition-opacity"
+            style={{ background: '#ef4444', color: 'white', border: 'none' }}
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ConversationItem({
   conv,
   isActive,
   onSelect,
-  onDelete,
+  onDeleteRequest,
   onRename
 }: {
   conv: Conversation
   isActive: boolean
   onSelect: () => void
-  onDelete: () => void
+  onDeleteRequest: () => void
   onRename: (title: string) => void
 }): JSX.Element {
   const [isEditing, setIsEditing] = useState(false)
@@ -91,7 +139,7 @@ function ConversationItem({
             <button
               onClick={(e) => {
                 e.stopPropagation()
-                onDelete()
+                onDeleteRequest()
               }}
               className="p-0.5 rounded hover:text-red-400 transition-colors"
               style={{ color: 'var(--muted)' }}
@@ -111,6 +159,7 @@ export function Sidebar({ onOpenSettings }: SidebarProps): JSX.Element {
   const [query, setQuery] = useState('')
   const [showReminders, setShowReminders] = useState(false)
   const [reminderCount, setReminderCount] = useState(0)
+  const [pendingDelete, setPendingDelete] = useState<Conversation | null>(null)
 
   useEffect(() => {
     const fetch = (): void => {
@@ -125,7 +174,12 @@ export function Sidebar({ onOpenSettings }: SidebarProps): JSX.Element {
     ? conversations.filter((c) => c.title.toLowerCase().includes(query.toLowerCase()))
     : conversations
 
-  const isMac = navigator.userAgent.toLowerCase().includes('mac')
+  const handleConfirmDelete = (): void => {
+    if (!pendingDelete) return
+    deleteConv(pendingDelete.id)
+    if (activeId === pendingDelete.id) setActiveId(null)
+    setPendingDelete(null)
+  }
 
   return (
     <div
@@ -136,18 +190,18 @@ export function Sidebar({ onOpenSettings }: SidebarProps): JSX.Element {
         borderRight: '1px solid var(--border)'
       }}
     >
-      {/* macOS traffic light spacer */}
-      {isMac && <div style={{ height: '38px' }} className="drag-region shrink-0" />}
-
-      {/* New chat button */}
-      <div className="px-2 py-2 shrink-0">
+      {/* Title bar drag region with new chat button */}
+      <div
+        className="drag-region shrink-0 flex items-center justify-end px-2"
+        style={{ height: 38 }}
+      >
         <button
           onClick={() => createNew()}
-          className="flex items-center gap-2 w-full px-3 py-2 rounded-md text-sm transition-colors hover:opacity-80"
-          style={{ background: 'var(--accent)', color: 'white' }}
+          className="no-drag p-1.5 rounded-md hover:opacity-80 transition-opacity"
+          style={{ color: 'var(--muted)', background: 'none', border: 'none', cursor: 'pointer' }}
+          title="New Chat"
         >
-          <Plus size={15} />
-          New Chat
+          <SquarePen size={15} />
         </button>
       </div>
 
@@ -191,10 +245,7 @@ export function Sidebar({ onOpenSettings }: SidebarProps): JSX.Element {
               conv={conv}
               isActive={conv.id === activeId}
               onSelect={() => setActiveId(conv.id)}
-              onDelete={() => {
-                deleteConv(conv.id)
-                if (activeId === conv.id) setActiveId(null)
-              }}
+              onDeleteRequest={() => setPendingDelete(conv)}
               onRename={(title) => renameConv(conv.id, title)}
             />
           ))
@@ -229,6 +280,14 @@ export function Sidebar({ onOpenSettings }: SidebarProps): JSX.Element {
         </button>
         {showReminders && <RemindersPanel onClose={() => setShowReminders(false)} />}
       </div>
+
+      {pendingDelete && (
+        <DeleteModal
+          title={pendingDelete.title}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
     </div>
   )
 }
