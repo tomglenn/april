@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Check, Eye, EyeOff } from 'lucide-react'
 import { useSettingsStore } from '../stores/settings'
 import type { Provider } from '../types'
-import { useMultiProviderModels } from '../hooks/useMultiProviderModels'
+import { MODEL_CATALOG } from '../models'
 
 type Step = 1 | 2 | 3 | 4 | 5 | 'done'
 type Personality = 'professional' | 'friendly' | 'creative' | 'concise' | 'custom'
@@ -99,6 +99,12 @@ export function SetupWizard(): JSX.Element {
   const [ollamaUrl, setOllamaUrl] = useState(settings?.ollamaBaseUrl ?? 'http://localhost:11434')
   const [selectedModel, setSelectedModel] = useState('')
   const [selectedProvider, setSelectedProvider] = useState<Provider>('anthropic')
+  const [modelProviderTab, setModelProviderTab] = useState<Provider>('anthropic')
+  const [providerModels, setProviderModels] = useState<Record<Provider, string>>({
+    anthropic: MODEL_CATALOG.find((m) => m.provider === 'anthropic')?.model ?? '',
+    openai:    MODEL_CATALOG.find((m) => m.provider === 'openai')?.model ?? '',
+    ollama:    '',
+  })
   const [useCustomModel, setUseCustomModel] = useState(false)
   const [customModelName, setCustomModelName] = useState('')
   const [customProvider, setCustomProvider] = useState<Provider>('anthropic')
@@ -107,12 +113,6 @@ export function SetupWizard(): JSX.Element {
   const [userBio, setUserBio] = useState(settings?.userBio ?? '')
   const [personality, setPersonality] = useState<Personality>('friendly')
   const [customPrompt, setCustomPrompt] = useState(PERSONALITY_PROMPTS.friendly)
-
-  const { groups, allEmpty } = useMultiProviderModels({
-    anthropicApiKey: anthropicKey,
-    openaiApiKey: openaiKey,
-    ollamaBaseUrl: ollamaUrl
-  })
 
   const step2Valid = !!(anthropicKey.trim() || openaiKey.trim() || ollamaUrl.trim())
 
@@ -133,6 +133,12 @@ export function SetupWizard(): JSX.Element {
     if (openaiKey.trim()) partial.openaiApiKey = openaiKey.trim()
     if (ollamaUrl.trim()) partial.ollamaBaseUrl = ollamaUrl.trim()
     await update(partial)
+    // Default the model tab to the first configured provider and pre-select its model
+    const firstProvider: Provider = anthropicKey.trim() ? 'anthropic' : openaiKey.trim() ? 'openai' : 'ollama'
+    setModelProviderTab(firstProvider)
+    const initialModel = providerModels[firstProvider] || MODEL_CATALOG.find((m) => m.provider === firstProvider)?.model || ''
+    setSelectedModel(initialModel)
+    setSelectedProvider(firstProvider)
     setStep(3)
   }
 
@@ -155,16 +161,6 @@ export function SetupWizard(): JSX.Element {
     setStep('done')
   }
 
-  function handleModelSelect(value: string): void {
-    if (value === '__custom__') {
-      setUseCustomModel(true)
-      return
-    }
-    setUseCustomModel(false)
-    const [prov, ...rest] = value.split(':')
-    setSelectedProvider(prov as Provider)
-    setSelectedModel(rest.join(':'))
-  }
 
   const providerLabel = (p: Provider): string =>
     p === 'anthropic' ? 'Anthropic' : p === 'openai' ? 'OpenAI' : 'Ollama'
@@ -308,45 +304,40 @@ export function SetupWizard(): JSX.Element {
                 </p>
               </div>
 
-              {!useCustomModel && !allEmpty && (
-                <div style={{ position: 'relative' }}>
-                  <select
-                    value={selectedModel ? `${selectedProvider}:${selectedModel}` : ''}
-                    onChange={(e) => handleModelSelect(e.target.value)}
-                    style={{ ...inputStyle, appearance: 'none', paddingRight: '2rem', cursor: 'pointer' }}
-                  >
-                    <option value="" disabled>Select a model...</option>
-                    {groups
-                      .filter((g) => !g.loading && !g.failed && g.models.length > 0)
-                      .map((g) => (
-                        <optgroup key={g.provider} label={g.label}>
-                          {g.models.map((m) => (
-                            <option key={`${g.provider}:${m}`} value={`${g.provider}:${m}`}>{m}</option>
-                          ))}
-                        </optgroup>
-                      ))}
-                    <option value="__custom__">Use a custom model...</option>
-                  </select>
-                  <span
+              {/* Provider tabs */}
+              <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
+                {([
+                  { id: 'anthropic' as Provider, label: 'Anthropic', enabled: !!anthropicKey.trim() },
+                  { id: 'openai' as Provider, label: 'OpenAI', enabled: !!openaiKey.trim() },
+                  { id: 'ollama' as Provider, label: 'Ollama', enabled: !!ollamaUrl.trim() },
+                ]).filter((p) => p.enabled).map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => {
+                      setModelProviderTab(p.id)
+                      setUseCustomModel(false)
+                      const model = providerModels[p.id] || MODEL_CATALOG.find((m) => m.provider === p.id)?.model || ''
+                      setSelectedModel(model)
+                      setSelectedProvider(p.id)
+                    }}
                     style={{
-                      position: 'absolute',
-                      right: '10px',
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      pointerEvents: 'none',
-                      color: 'var(--muted)',
-                      fontSize: '16px'
+                      padding: '6px 14px',
+                      borderRadius: '6px',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      cursor: 'pointer',
+                      border: `1px solid ${modelProviderTab === p.id ? 'var(--accent)' : 'var(--border)'}`,
+                      background: modelProviderTab === p.id ? 'var(--accent)' : 'var(--bg)',
+                      color: modelProviderTab === p.id ? '#fff' : 'var(--muted)',
                     }}
                   >
-                    ▾
-                  </span>
-                  {groups.some((g) => g.loading) && (
-                    <p style={{ fontSize: '12px', color: 'var(--muted)', margin: '6px 0 0' }}>Loading models...</p>
-                  )}
-                </div>
-              )}
+                    {p.label}
+                  </button>
+                ))}
+              </div>
 
-              {(useCustomModel || allEmpty) && (
+              {/* Model selection */}
+              {useCustomModel ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '13px', color: 'var(--muted)', marginBottom: '6px' }}>
@@ -370,16 +361,10 @@ export function SetupWizard(): JSX.Element {
                           key={p}
                           onClick={() => setCustomProvider(p)}
                           style={{
-                            flex: 1,
-                            padding: '8px',
-                            borderRadius: '6px',
+                            flex: 1, padding: '8px', borderRadius: '6px', fontSize: '13px',
+                            fontWeight: 500, cursor: 'pointer', textAlign: 'center',
                             border: customProvider === p ? '2px solid var(--accent)' : '1px solid var(--border)',
-                            background: 'var(--bg)',
-                            color: 'var(--text)',
-                            fontSize: '13px',
-                            fontWeight: 500,
-                            cursor: 'pointer',
-                            textAlign: 'center'
+                            background: 'var(--bg)', color: 'var(--text)',
                           }}
                         >
                           {providerLabel(p)}
@@ -387,15 +372,49 @@ export function SetupWizard(): JSX.Element {
                       ))}
                     </div>
                   </div>
-                  {!allEmpty && (
-                    <button
-                      style={{ ...skipBtnStyle, textAlign: 'left', fontSize: '12px' }}
-                      onClick={() => setUseCustomModel(false)}
-                    >
-                      ← Back to model list
-                    </button>
-                  )}
+                  <button style={{ ...skipBtnStyle, textAlign: 'left', fontSize: '12px' }} onClick={() => setUseCustomModel(false)}>
+                    ← Back to model list
+                  </button>
                 </div>
+              ) : modelProviderTab === 'ollama' ? (
+                <input
+                  type="text"
+                  value={providerModels.ollama}
+                  onChange={(e) => {
+                    setProviderModels((prev) => ({ ...prev, ollama: e.target.value }))
+                    setSelectedModel(e.target.value)
+                    setSelectedProvider('ollama')
+                  }}
+                  placeholder="e.g. llama3.2"
+                  style={inputStyle}
+                />
+              ) : (
+                <div style={{ position: 'relative' }}>
+                  <select
+                    value={providerModels[modelProviderTab]}
+                    onChange={(e) => {
+                      const model = e.target.value
+                      setProviderModels((prev) => ({ ...prev, [modelProviderTab]: model }))
+                      setSelectedModel(model)
+                      setSelectedProvider(modelProviderTab)
+                    }}
+                    style={{ ...inputStyle, appearance: 'none', paddingRight: '2rem', cursor: 'pointer' }}
+                  >
+                    {MODEL_CATALOG.filter((m) => m.provider === modelProviderTab).map((m) => (
+                      <option key={m.id} value={m.model}>{m.label}</option>
+                    ))}
+                  </select>
+                  <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--muted)', fontSize: '16px' }}>▾</span>
+                </div>
+              )}
+
+              {!useCustomModel && (
+                <button
+                  style={{ ...skipBtnStyle, textAlign: 'left', fontSize: '12px', marginTop: '8px' }}
+                  onClick={() => setUseCustomModel(true)}
+                >
+                  Use custom model ID…
+                </button>
               )}
 
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>

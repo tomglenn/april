@@ -5,7 +5,7 @@ import type { MCPServerConfig, Settings } from '../types'
 import type { MCPServerStatus } from '../types'
 import { MCPCatalog } from './MCPCatalog'
 import { SensitiveInput } from './SensitiveInput'
-import { useMultiProviderModels } from '../hooks/useMultiProviderModels'
+import { MODEL_CATALOG } from '../models'
 import type { Provider } from '../types'
 import { LOCAL_DEFAULTS, SYNCED_DEFAULTS } from '@april/core'
 
@@ -135,6 +135,19 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
   const [argsText, setArgsText] = useState<Record<number, string>>({})
   const [showCatalog, setShowCatalog] = useState(false)
   const [useCustomModel, setUseCustomModel] = useState(false)
+  const [modelProviderTab, setModelProviderTab] = useState<Provider>(
+    settings?.defaultProvider ?? 'anthropic'
+  )
+  const [providerModels, setProviderModels] = useState<Record<Provider, string>>(() => {
+    const defaults: Record<Provider, string> = {
+      anthropic: MODEL_CATALOG.find((m) => m.provider === 'anthropic')?.model ?? '',
+      openai:    MODEL_CATALOG.find((m) => m.provider === 'openai')?.model ?? '',
+      ollama:    '',
+    }
+    const p = settings?.defaultProvider
+    if (p) defaults[p] = settings?.defaultModel ?? defaults[p]
+    return defaults
+  })
   const detected = detectPersonality(settings?.personalityPrompt ?? '')
   const [personality, setPersonality] = useState<Personality | null>(detected.personality)
   const [customPrompt, setCustomPrompt] = useState(settings?.customPersonalityPrompt ?? '')
@@ -199,12 +212,6 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
     }, 2000)
     return () => clearInterval(id)
   }, [tab])
-
-  const { groups, allEmpty } = useMultiProviderModels({
-    anthropicApiKey: form.anthropicApiKey,
-    openaiApiKey: form.openaiApiKey,
-    ollamaBaseUrl: form.ollamaBaseUrl
-  })
 
   const set = (key: keyof Settings, value: string): void => {
     setForm((f) => ({ ...f, [key]: value }))
@@ -328,104 +335,108 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
                   />
                 </div>
 
-                {/* Default Model — combined dropdown */}
+                {/* Default Model */}
                 <div className="mb-4">
                   <Label>Default Model</Label>
                   {!form.anthropicApiKey && !form.openaiApiKey && !form.ollamaBaseUrl ? (
                     <div className={`${inputCls} font-mono`} style={{ ...inputStyle, color: 'var(--muted)' }}>
                       Add an API key above to see available models
                     </div>
-                  ) : !useCustomModel && !allEmpty ? (
-                    <>
-                      <div className="relative">
-                        <select
-                          value={form.defaultModel ? `${form.defaultProvider}:${form.defaultModel}` : ''}
-                          onChange={(e) => {
-                            const val = e.target.value
-                            if (val === '__custom__') {
-                              setUseCustomModel(true)
-                              return
-                            }
-                            const [prov, ...rest] = val.split(':')
-                            const model = rest.join(':')
-                            setForm((f) => ({ ...f, defaultProvider: prov as Provider, defaultModel: model }))
-                            save({ defaultProvider: prov as Provider, defaultModel: model })
-                          }}
-                          className={`${inputCls} font-mono appearance-none pr-8`}
-                          style={inputStyle}
-                        >
-                          <option value="" disabled>Select a model...</option>
-                          {groups
-                            .filter((g) => !g.loading && !g.failed && g.models.length > 0)
-                            .map((g) => (
-                              <optgroup key={g.provider} label={g.label}>
-                                {g.models.map((m) => (
-                                  <option key={`${g.provider}:${m}`} value={`${g.provider}:${m}`}>{m}</option>
-                                ))}
-                              </optgroup>
-                            ))}
-                          <option value="__custom__">Use a custom model...</option>
-                        </select>
-                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-base" style={{ color: 'var(--muted)' }}>▾</span>
-                      </div>
-                      {groups.some((g) => g.loading) && (
-                        <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>Loading models...</p>
-                      )}
-                    </>
                   ) : (
                     <div>
-                      <input
-                        type="text"
-                        value={form.defaultModel}
-                        onChange={(e) => set('defaultModel', e.target.value)}
-                        placeholder="e.g. claude-sonnet-4-6, gpt-4o, llama3.2"
-                        className={`${inputCls} font-mono`}
-                        style={inputStyle}
-                      />
-                      <div className="flex gap-2 mt-2">
-                        {(['anthropic', 'openai', 'ollama'] as Provider[]).map((p) => (
+                      {/* Provider tabs */}
+                      <div className="flex gap-1 mb-2">
+                        {([
+                          { id: 'anthropic' as Provider, label: 'Anthropic', enabled: !!form.anthropicApiKey },
+                          { id: 'openai' as Provider, label: 'OpenAI', enabled: !!form.openaiApiKey },
+                          { id: 'ollama' as Provider, label: 'Ollama', enabled: !!form.ollamaBaseUrl },
+                        ]).filter((p) => p.enabled).map((p) => (
                           <button
-                            key={p}
+                            key={p.id}
                             onClick={() => {
-                              setForm((f) => ({ ...f, defaultProvider: p }))
-                              save({ defaultProvider: p })
+                              setModelProviderTab(p.id)
+                              setUseCustomModel(false)
+                              const model = providerModels[p.id] || MODEL_CATALOG.find((m) => m.provider === p.id)?.model || ''
+                              setForm((f) => ({ ...f, defaultModel: model, defaultProvider: p.id }))
+                              save({ defaultModel: model, defaultProvider: p.id })
                             }}
-                            className="flex-1 py-1.5 rounded-md text-xs font-medium transition-colors"
+                            className="px-3 py-1 rounded-md text-xs font-medium transition-colors"
                             style={{
-                              background: 'var(--bg)',
-                              border: form.defaultProvider === p ? '2px solid var(--accent)' : '1px solid var(--border)',
-                              color: 'var(--text)',
+                              background: modelProviderTab === p.id ? 'var(--accent)' : 'var(--bg)',
+                              color: modelProviderTab === p.id ? '#fff' : 'var(--muted)',
+                              border: `1px solid ${modelProviderTab === p.id ? 'var(--accent)' : 'var(--border)'}`,
                               cursor: 'pointer'
                             }}
                           >
-                            {p === 'anthropic' ? 'Anthropic' : p === 'openai' ? 'OpenAI' : 'Ollama'}
+                            {p.label}
                           </button>
                         ))}
                       </div>
-                      {!allEmpty && (
+
+                      {/* Models for selected provider */}
+                      {useCustomModel ? (
+                        <div>
+                          <input
+                            type="text"
+                            value={form.defaultModel}
+                            onChange={(e) => set('defaultModel', e.target.value)}
+                            placeholder="e.g. claude-sonnet-4-6, gpt-4o, llama3.2"
+                            className={`${inputCls} font-mono`}
+                            style={inputStyle}
+                          />
+                          <button
+                            className="text-xs mt-2"
+                            style={{ color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer' }}
+                            onClick={() => setUseCustomModel(false)}
+                          >
+                            Back to model list
+                          </button>
+                        </div>
+                      ) : modelProviderTab === 'ollama' ? (
+                        <input
+                          type="text"
+                          value={providerModels.ollama}
+                          onChange={(e) => {
+                            setProviderModels((prev) => ({ ...prev, ollama: e.target.value }))
+                            setForm((f) => ({ ...f, defaultModel: e.target.value, defaultProvider: 'ollama' }))
+                            debouncedSave({ defaultModel: e.target.value, defaultProvider: 'ollama' })
+                          }}
+                          placeholder="e.g. llama3.2"
+                          className={`${inputCls} font-mono`}
+                          style={inputStyle}
+                        />
+                      ) : (
+                        <div className="relative">
+                          <select
+                            value={providerModels[modelProviderTab]}
+                            onChange={(e) => {
+                              const model = e.target.value
+                              setProviderModels((prev) => ({ ...prev, [modelProviderTab]: model }))
+                              setForm((f) => ({ ...f, defaultModel: model, defaultProvider: modelProviderTab }))
+                              save({ defaultModel: model, defaultProvider: modelProviderTab })
+                            }}
+                            className={`${inputCls} appearance-none pr-8`}
+                            style={inputStyle}
+                          >
+                            {MODEL_CATALOG.filter((m) => m.provider === modelProviderTab).map((m) => (
+                              <option key={m.id} value={m.model}>{m.label}</option>
+                            ))}
+                          </select>
+                          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-base" style={{ color: 'var(--muted)' }}>▾</span>
+                        </div>
+                      )}
+
+                      {!useCustomModel && (
                         <button
-                          className="text-xs mt-2"
-                          style={{ color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer' }}
-                          onClick={() => setUseCustomModel(false)}
+                          className="text-xs mt-2 text-left"
+                          style={{ color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                          onClick={() => setUseCustomModel(true)}
                         >
-                          Back to model list
+                          Use custom model ID…
                         </button>
                       )}
                     </div>
                   )}
-                </div>
-
-                {/* Quick Switcher Hotkey */}
-                <div className="mb-4">
-                  <div className="text-xs font-medium mb-0.5" style={{ color: 'var(--muted)' }}>Quick Switcher</div>
-                  <div className="text-xs mb-2" style={{ color: 'var(--muted)', opacity: 0.6 }}>Open the quick conversation switcher</div>
-                  <HotkeyRecorder
-                    value={form.quickSwitcherHotkey || 'CmdOrCtrl+K'}
-                    onChange={(v) => {
-                      setForm((f) => ({ ...f, quickSwitcherHotkey: v }))
-                      debouncedSave({ quickSwitcherHotkey: v })
-                    }}
-                  />
                 </div>
 
                 {/* OpenAI Features — shown when OpenAI key is set */}
@@ -713,6 +724,21 @@ export function SettingsModal({ onClose }: Props): JSX.Element {
                     onChange={(v) => {
                       setForm((f) => ({ ...f, quickPromptHotkey: v }))
                       save({ quickPromptHotkey: v })
+                    }}
+                  />
+                </div>
+
+                {/* Command Palette Hotkey */}
+                <div className="mb-5">
+                  <Label>Command Palette Hotkey</Label>
+                  <p className="text-xs mb-2" style={{ color: 'var(--muted)' }}>
+                    Open the command palette to search conversations and run commands.
+                  </p>
+                  <HotkeyRecorder
+                    value={form.quickSwitcherHotkey || 'CmdOrCtrl+K'}
+                    onChange={(v) => {
+                      setForm((f) => ({ ...f, quickSwitcherHotkey: v }))
+                      debouncedSave({ quickSwitcherHotkey: v })
                     }}
                   />
                 </div>

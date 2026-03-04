@@ -1,35 +1,14 @@
 import { useEffect, useRef, useMemo, useState, useCallback } from 'react'
-import { MessageSquare, AlertCircle, Copy, Check } from 'lucide-react'
+import { MessageSquare, AlertCircle, Copy, Check, Pin, TriangleAlert } from 'lucide-react'
 import { Message } from './Message'
 import { InputBar } from './InputBar'
 import { useConversationsStore } from '../stores/conversations'
 import { useSettingsStore } from '../stores/settings'
 import { useChat } from '../hooks/useChat'
 import { useVoice } from '../hooks/useVoice'
-import type { Message as MessageType } from '../types'
+import { MODEL_CATALOG } from '../models'
+import type { } from '../types'
 
-function estimateTokens(messages: MessageType[]): number {
-  let chars = 0
-  for (const msg of messages) {
-    for (const block of msg.blocks) {
-      if (block.type === 'text') chars += block.text.length
-      else if (block.type === 'thinking') chars += (block as { type: 'thinking'; thinking: string }).thinking.length
-      else if (block.type === 'image') chars += 800
-    }
-  }
-  return Math.round(chars / 4)
-}
-
-function getContextWindow(model: string): number | null {
-  const m = model.toLowerCase()
-  if (m.includes('claude')) return 200000
-  if (m.includes('o1') || m.includes('o3')) return 200000
-  if (m.includes('gpt-4o')) return 128000
-  if (m.includes('gpt-4-turbo')) return 128000
-  if (m.includes('gpt-4')) return 8192
-  if (m.includes('gpt-3.5')) return 16385
-  return null
-}
 
 const SUGGESTIONS = [
   'Explain how transformers work in AI',
@@ -70,26 +49,30 @@ export function ConversationView({ onOpenSettings }: Props): JSX.Element {
 
   const hasOpenAIKey = !!settings?.openaiApiKey
 
+  const activeConv = conversations.find((c) => c.id === activeId)
+
+  const effectiveModel = activeConv?.model ?? settings?.defaultModel ?? ''
+  const effectiveProvider = activeConv?.provider ?? settings?.defaultProvider ?? 'anthropic'
+
   const handleMicClick = useCallback(() => {
     if (voice.isRecording) {
       voice.stopRecording().then((text) => {
-        if (text && settings) {
+        if (text && effectiveModel) {
           lastInputWasVoiceRef.current = true
-          sendMessage(text, settings.defaultModel, settings.defaultProvider)
+          sendMessage(text, effectiveModel, effectiveProvider)
         }
       })
     } else {
       voice.startRecording()
     }
-  }, [voice, settings, sendMessage])
+  }, [voice, effectiveModel, effectiveProvider, sendMessage])
 
   const missingKey =
     settings !== null &&
-    ((settings.defaultProvider === 'anthropic' && !settings.anthropicApiKey) ||
-      (settings.defaultProvider === 'openai' && !settings.openaiApiKey))
+    ((effectiveProvider === 'anthropic' && !settings.anthropicApiKey) ||
+      (effectiveProvider === 'openai' && !settings.openaiApiKey))
 
   const scrollRef = useRef<HTMLDivElement>(null)
-  const activeConv = conversations.find((c) => c.id === activeId)
 
   // Auto-play TTS when streaming finishes after a voice input
   useEffect(() => {
@@ -128,19 +111,28 @@ export function ConversationView({ onOpenSettings }: Props): JSX.Element {
 
   const [copied, setCopied] = useState(false)
 
-  const lastModel = activeConv?.messages
-    .filter((m) => m.role === 'assistant' && m.model)
-    .at(-1)?.model ?? settings?.defaultModel
-
-  const model = lastModel ?? ''
-  const tokenEstimate = activeConv ? estimateTokens(activeConv.messages) : 0
-  const contextWindow = getContextWindow(model)
-  const contextPct = contextWindow ? Math.min(100, Math.ceil((tokenEstimate / contextWindow) * 100)) : null
-  const contextColor =
-    contextPct === null ? 'var(--muted)'
-    : contextPct >= 80 ? '#ef4444'
-    : contextPct >= 50 ? '#f59e0b'
-    : 'var(--muted)'
+  const showContextWarning = (() => {
+    if (!activeConv || activeConv.messages.length === 0) return false
+    let chars = 0
+    for (const msg of activeConv.messages) {
+      for (const block of msg.blocks) {
+        if (block.type === 'text') chars += block.text.length
+        else if (block.type === 'thinking') chars += (block as { type: 'thinking'; thinking: string }).thinking.length
+        else if (block.type === 'image') chars += 800
+      }
+    }
+    const tokens = Math.round(chars / 4)
+    const model = effectiveModel.toLowerCase()
+    const window =
+      model.includes('claude') ? 200000 :
+      model.includes('o1') || model.includes('o3') ? 200000 :
+      model.includes('gpt-4o') ? 128000 :
+      model.includes('gpt-4-turbo') ? 128000 :
+      model.includes('gpt-4') ? 8192 :
+      model.includes('gpt-3.5') ? 16385 :
+      null
+    return window !== null && tokens / window >= 0.75
+  })()
 
   const copyConversation = useCallback(() => {
     if (!activeConv || activeConv.messages.length === 0) return
@@ -184,18 +176,34 @@ export function ConversationView({ onOpenSettings }: Props): JSX.Element {
     <div className="flex-1 flex flex-col overflow-hidden" style={{ background: 'var(--bg)' }}>
       {/* Top bar */}
       <div
-        className="drag-region flex items-center justify-between px-4 shrink-0"
+        className="drag-region flex items-center justify-between px-4 shrink-0 select-none"
         style={{ height: 38, borderBottom: '1px solid var(--border)' }}
       >
         <div className="flex items-center gap-2">
           <span className="text-xs" style={{ color: 'var(--muted)', opacity: 0.7 }}>
-            {lastModel ?? ''}
+            {MODEL_CATALOG.find((m) => m.model === effectiveModel)?.label ?? effectiveModel}
           </span>
-          {contextPct !== null && activeConv.messages.length > 0 && (
-            <>
-              <span style={{ color: 'var(--muted)', fontSize: '10px', opacity: 0.5 }}>·</span>
-              <span className="text-xs" style={{ color: contextColor, opacity: 0.8 }}>{contextPct}% ctx</span>
-            </>
+          {activeConv.model && (
+            <div className="no-drag relative group" style={{ lineHeight: 0, flexShrink: 0 }}>
+              <Pin size={10} style={{ color: 'var(--accent)', opacity: 0.7 }} />
+              <div
+                className="absolute left-0 top-full mt-1.5 px-2 py-1.5 rounded text-xs pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity"
+                style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)', zIndex: 50, boxShadow: '0 2px 8px rgba(0,0,0,0.15)', width: '240px', whiteSpace: 'normal' }}
+              >
+                This conversation is overriding the default model. Changing your default model in Settings will not affect it.
+              </div>
+            </div>
+          )}
+          {showContextWarning && activeConv.messages.length > 0 && (
+            <div className="no-drag relative group" style={{ lineHeight: 0, flexShrink: 0 }}>
+              <TriangleAlert size={11} style={{ color: '#f59e0b', opacity: 0.85 }} />
+              <div
+                className="absolute left-0 top-full mt-1.5 px-2 py-1.5 rounded text-xs whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity"
+                style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)', zIndex: 50, boxShadow: '0 2px 8px rgba(0,0,0,0.15)', width: '280px', whiteSpace: 'normal' }}
+              >
+                This conversation is getting long. Older messages carry less weight, which may affect the quality and coherence of responses. Starting a new conversation will give the best results.
+              </div>
+            </div>
           )}
         </div>
         {activeConv.messages.length > 0 && (
@@ -224,8 +232,8 @@ export function ConversationView({ onOpenSettings }: Props): JSX.Element {
                 <button
                   key={s}
                   onClick={() => {
-                    if (!settings || missingKey) return
-                    sendMessage(s, settings.defaultModel, settings.defaultProvider)
+                    if (!effectiveModel || missingKey) return
+                    sendMessage(s, effectiveModel, effectiveProvider)
                   }}
                   className="text-left px-3 py-2.5 rounded-lg text-xs transition-colors hover:opacity-80"
                   style={{
@@ -289,6 +297,8 @@ export function ConversationView({ onOpenSettings }: Props): JSX.Element {
         onSend={sendMessage}
         onStop={stopStreaming}
         isStreaming={isActiveStreaming}
+        model={effectiveModel}
+        provider={effectiveProvider}
         missingKey={missingKey}
         hasOpenAIKey={hasOpenAIKey}
         isRecording={voice.isRecording}
