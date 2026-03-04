@@ -362,6 +362,27 @@ export function CommandPalette({ onClose }: Props): JSX.Element {
     }
   }
 
+  const getSnippet = (convId: string): string | null => {
+    if (!query.trim()) return null
+    const conv = conversations.find(c => c.id === convId)
+    if (!conv) return null
+    const q = query.toLowerCase()
+    for (const msg of conv.messages) {
+      for (const block of msg.blocks) {
+        if (block.type === 'text') {
+          const lower = block.text.toLowerCase()
+          const idx = lower.indexOf(q)
+          if (idx >= 0) {
+            const start = Math.max(0, idx - 30)
+            const end = Math.min(block.text.length, idx + 60)
+            return (start > 0 ? '…' : '') + block.text.slice(start, end) + (end < block.text.length ? '…' : '')
+          }
+        }
+      }
+    }
+    return null
+  }
+
   const renderNavItem = (item: NavItem, idx: number): JSX.Element => {
     const isSelected = idx === selectedIdx
     const style = {
@@ -369,6 +390,7 @@ export function CommandPalette({ onClose }: Props): JSX.Element {
       borderLeft: isSelected ? '2px solid var(--accent)' : '2px solid transparent'
     }
     if (item.type === 'conv') {
+      const snippet = getSnippet(item.conv.id)
       return (
         <div
           key={item.conv.id}
@@ -378,8 +400,13 @@ export function CommandPalette({ onClose }: Props): JSX.Element {
           className="px-4 py-2.5 cursor-pointer flex items-center gap-3"
           style={style}
         >
-          <MessageSquare size={14} style={{ color: 'var(--muted)', flexShrink: 0 }} />
-          <span className="text-sm truncate" style={{ color: 'var(--text)' }}>{item.conv.title}</span>
+          <MessageSquare size={14} style={{ color: 'var(--muted)', flexShrink: 0, marginTop: snippet ? 2 : 0 }} />
+          <div className="min-w-0">
+            <div className="text-sm truncate" style={{ color: 'var(--text)' }}>{item.conv.title}</div>
+            {snippet && (
+              <div className="text-xs truncate mt-0.5" style={{ color: 'var(--muted)' }}>{snippet}</div>
+            )}
+          </div>
         </div>
       )
     }
