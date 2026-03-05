@@ -49,6 +49,9 @@ PODS:
     - SDWebImageAVIFCoder (~> 0.11.0)
     - SDWebImageSVGCoder (~> 1.7.0)
     - SDWebImageWebPCoder (~> 0.14.6)
+  - ExpoImageManipulator (55.0.9):
+    - ExpoModulesCore
+    - SDWebImageWebPCoder
   - ExpoImagePicker (55.0.11):
     - ExpoModulesCore
   - ExpoKeepAwake (55.0.4):
@@ -2269,6 +2272,7 @@ DEPENDENCIES:
   - ExpoGlassEffect (from `../node_modules/expo-glass-effect/ios`)
   - ExpoHaptics (from `../node_modules/expo-haptics/ios`)
   - ExpoImage (from `../node_modules/expo-router/node_modules/expo-image/ios`)
+  - ExpoImageManipulator (from `../node_modules/expo-image-manipulator/ios`)
   - ExpoImagePicker (from `../node_modules/expo-image-picker/ios`)
   - ExpoKeepAwake (from `../node_modules/expo/node_modules/expo-keep-awake/ios`)
   - ExpoLinking (from `../node_modules/expo-linking/ios`)
@@ -2394,6 +2398,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/expo-haptics/ios"
   ExpoImage:
     :path: "../node_modules/expo-router/node_modules/expo-image/ios"
+  ExpoImageManipulator:
+    :path: "../node_modules/expo-image-manipulator/ios"
   ExpoImagePicker:
     :path: "../node_modules/expo-image-picker/ios"
   ExpoKeepAwake:
@@ -2588,6 +2594,7 @@ SPEC CHECKSUMS:
   ExpoGlassEffect: b11cb2bf51bf6d4dc6309c421ca8cec086b4b9db
   ExpoHaptics: 8952528daeafbb20d147c33f8cc6ab648cd34c58
   ExpoImage: 53ab717157f29bb5139f9f75b259f93f784b6847
+  ExpoImageManipulator: 850dc2ad0b6de1807a25c247d8b3d9a9b012824d
   ExpoImagePicker: cf1756f08bc5b29a31ff6af9b261df57b7a12078
   ExpoKeepAwake: 7f3b28c361c37389b18841bb52a58003b39fcb33
   ExpoLinking: 88ba36a28c83525e564b8229e02d451347accb70

@@ -221,6 +221,7 @@ export function createFetchAnthropicCaller(apiKey: string): AnthropicCaller {
           }
 
           fullResponse = await response.json()
+          console.log('[api] Anthropic response received:', fullResponse.content?.length, 'content blocks, stop_reason:', fullResponse.stop_reason)
           const events = synthesizeAnthropicEvents(fullResponse)
 
           for (const event of events) {

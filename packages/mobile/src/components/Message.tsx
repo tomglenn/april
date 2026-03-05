@@ -1,5 +1,5 @@
 import React from 'react'
-import { View, Text, Pressable, StyleSheet } from 'react-native'
+import { View, Text, Pressable, Image, StyleSheet } from 'react-native'
 import { AlertCircle, RotateCcw } from 'lucide-react-native'
 import { useTheme } from '../theme/ThemeProvider'
 import { MessageContent } from './MessageContent'
@@ -57,13 +57,14 @@ export function Message({ message, isStreaming = false, onRetry }: Props): JSX.E
           return <MessageContent key={i} text={item.text} />
         }
         if (item.kind === 'image') {
+          const uri = `data:${item.block.mediaType};base64,${item.block.data}`
           return (
             <View key={i} style={styles.imageContainer}>
-              <Pressable>
-                <View style={[styles.imagePlaceholder, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <Text style={{ color: colors.muted, fontSize: 12 }}>Image</Text>
-                </View>
-              </Pressable>
+              <Image
+                source={{ uri }}
+                style={[styles.imageThumb, { borderColor: colors.border }]}
+                resizeMode="cover"
+              />
             </View>
           )
         }
@@ -117,13 +118,11 @@ const styles = StyleSheet.create({
   imageContainer: {
     marginVertical: 4
   },
-  imagePlaceholder: {
-    width: 200,
-    height: 150,
-    borderRadius: 8,
-    borderWidth: 1,
-    justifyContent: 'center',
-    alignItems: 'center'
+  imageThumb: {
+    width: 220,
+    height: 165,
+    borderRadius: 10,
+    borderWidth: 1
   },
   errorBox: {
     flexDirection: 'row',

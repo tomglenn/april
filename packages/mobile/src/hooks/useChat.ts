@@ -87,11 +87,11 @@ export function useChat(conversationId: string | null): UseChatReturn {
       if (!settings) return
 
       // Build image content blocks
-      const imageBlocks: ContentBlock[] = (images ?? []).map((img) => ({
-        type: 'image' as const,
-        mediaType: img.mediaType,
-        data: img.dataUrl.split(',')[1]
-      }))
+      const imageBlocks: ContentBlock[] = (images ?? []).map((img) => {
+        const data = img.dataUrl.split(',')[1]
+        console.log(`[chat] Image block: ${img.mediaType}, ${Math.round((data?.length ?? 0) / 1024)}KB base64`)
+        return { type: 'image' as const, mediaType: img.mediaType, data }
+      })
 
       // Add user message
       const userMsg: Message = {

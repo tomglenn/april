@@ -11,7 +11,9 @@ if (typeof globalThis.crypto.randomUUID !== 'function') {
 }
 
 import React, { useEffect, useState } from 'react'
-import { View, ActivityIndicator } from 'react-native'
+import { View, ActivityIndicator, LogBox } from 'react-native'
+
+LogBox.ignoreLogs(['InteractionManager has been deprecated'])
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { Drawer } from 'expo-router/drawer'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
@@ -53,7 +55,7 @@ function AppContent(): JSX.Element {
 
   return (
     <Drawer
-      drawerContent={(props) => <DrawerContent {...props} />}
+      drawerContent={DrawerContent}
       screenOptions={{
         headerShown: false,
         drawerType: 'slide',

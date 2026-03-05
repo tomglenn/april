@@ -1,11 +1,4 @@
 import { useState, useRef, useCallback } from 'react'
-import {
-  useAudioRecorder,
-  useAudioPlayer,
-  RecordingPresets,
-  requestRecordingPermissionsAsync,
-  setAudioModeAsync
-} from 'expo-audio'
 import { useSettingsStore } from '../stores/settings'
 
 interface UseVoiceReturn {
@@ -25,16 +18,21 @@ export function useVoice(): UseVoiceReturn {
   const [recordingSeconds, setRecordingSeconds] = useState(0)
   const [isSpeaking, setIsSpeaking] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const ttsPlayerRef = useRef<ReturnType<typeof useAudioPlayer> | null>(null)
-
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recorderRef = useRef<any>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ttsPlayerRef = useRef<any>(null)
 
   const startRecording = useCallback(async () => {
     try {
-      const { granted } = await requestRecordingPermissionsAsync()
+      const ExpoAudio = await import('expo-audio')
+      const { granted } = await ExpoAudio.requestRecordingPermissionsAsync()
       if (!granted) return
 
-      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true })
+      await ExpoAudio.setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true })
+
+      const recorder = new ExpoAudio.AudioRecorder(ExpoAudio.RecordingPresets.HIGH_QUALITY)
+      recorderRef.current = recorder
       await recorder.prepareToRecordAsync()
       recorder.record()
 
@@ -43,8 +41,9 @@ export function useVoice(): UseVoiceReturn {
       timerRef.current = setInterval(() => setRecordingSeconds((s) => s + 1), 1000)
     } catch (err) {
       console.warn('[voice] Failed to start recording:', err)
+      setIsRecording(false)
     }
-  }, [recorder])
+  }, [])
 
   const stopRecording = useCallback(async (): Promise<string | null> => {
     if (timerRef.current) {
@@ -53,11 +52,16 @@ export function useVoice(): UseVoiceReturn {
     }
     setIsRecording(false)
 
+    const recorder = recorderRef.current
+    if (!recorder) return null
+
     try {
       await recorder.stop()
-      await setAudioModeAsync({ allowsRecording: false })
+      const ExpoAudio = await import('expo-audio')
+      await ExpoAudio.setAudioModeAsync({ allowsRecording: false })
 
       const uri = recorder.uri
+      recorderRef.current = null
       if (!uri) return null
 
       setIsTranscribing(true)
@@ -68,7 +72,6 @@ export function useVoice(): UseVoiceReturn {
         return null
       }
 
-      // Upload to Whisper API
       const formData = new FormData()
       formData.append('file', {
         uri,
@@ -96,7 +99,7 @@ export function useVoice(): UseVoiceReturn {
       setIsTranscribing(false)
       return null
     }
-  }, [recorder])
+  }, [])
 
   const speak = useCallback(async (text: string) => {
     const { settings } = useSettingsStore.getState()
@@ -123,7 +126,6 @@ export function useVoice(): UseVoiceReturn {
         return
       }
 
-      // Write response to a temp file and play it
       const blob = await response.blob()
       const reader = new FileReader()
       const dataUri = await new Promise<string>((resolve) => {
@@ -131,11 +133,9 @@ export function useVoice(): UseVoiceReturn {
         reader.readAsDataURL(blob)
       })
 
-      // useAudioPlayer is a hook so we can't call it dynamically.
-      // Use the AudioPlayer class directly for TTS playback.
-      const { AudioPlayer } = await import('expo-audio')
-      const player = new AudioPlayer(dataUri)
-      ttsPlayerRef.current = player as any
+      const ExpoAudio = await import('expo-audio')
+      const player = new ExpoAudio.AudioPlayer(dataUri, 0.5, false, 0)
+      ttsPlayerRef.current = player
 
       player.addListener('playbackStatusUpdate', (status: any) => {
         if (status.didJustFinish) {
@@ -153,7 +153,7 @@ export function useVoice(): UseVoiceReturn {
   }, [])
 
   const stopSpeaking = useCallback(() => {
-    const player = ttsPlayerRef.current as any
+    const player = ttsPlayerRef.current
     if (player) {
       player.pause?.()
       player.remove?.()

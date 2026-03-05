@@ -73,13 +73,46 @@ export function InputBar({
     })
     if (result.canceled || !result.assets) return
 
-    const attachments: ImageAttachment[] = result.assets
-      .filter((a) => a.base64)
-      .map((a) => ({
-        id: generateUUID(),
-        dataUrl: `data:image/jpeg;base64,${a.base64}`,
-        mediaType: 'image/jpeg'
-      }))
+    const ImageManipulator = await import('expo-image-manipulator')
+    const MAX_DIM = 1568
+
+    const attachments: ImageAttachment[] = []
+    for (const a of result.assets) {
+      if (!a.base64 || !a.uri) continue
+      try {
+        // Resize large images to stay within API limits
+        const needsResize = (a.width && a.width > MAX_DIM) || (a.height && a.height > MAX_DIM)
+        if (needsResize) {
+          const scale = Math.min(MAX_DIM / (a.width || MAX_DIM), MAX_DIM / (a.height || MAX_DIM))
+          const resized = await ImageManipulator.manipulateAsync(
+            a.uri,
+            [{ resize: { width: Math.round((a.width || MAX_DIM) * scale) } }],
+            { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+          )
+          if (resized.base64) {
+            attachments.push({
+              id: generateUUID(),
+              dataUrl: `data:image/jpeg;base64,${resized.base64}`,
+              mediaType: 'image/jpeg'
+            })
+            continue
+          }
+        }
+        // Use original if small enough or resize failed
+        attachments.push({
+          id: generateUUID(),
+          dataUrl: `data:image/jpeg;base64,${a.base64}`,
+          mediaType: 'image/jpeg'
+        })
+      } catch {
+        // Fallback to original
+        attachments.push({
+          id: generateUUID(),
+          dataUrl: `data:image/jpeg;base64,${a.base64}`,
+          mediaType: 'image/jpeg'
+        })
+      }
+    }
     setImages((prev) => [...prev, ...attachments])
   }, [])
 

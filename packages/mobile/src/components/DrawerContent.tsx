@@ -1,16 +1,16 @@
 import React, { useState, useMemo } from 'react'
 import { View, Text, FlatList, Pressable, TextInput, Alert, StyleSheet } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { useNavigation, DrawerActions } from '@react-navigation/native'
+import { router } from 'expo-router'
 import { SquarePen, MessageSquare, Search, Settings, Trash2, X } from 'lucide-react-native'
 import { useConversationsStore } from '../stores/conversations'
 import { useTheme } from '../theme/ThemeProvider'
+import type { DrawerContentComponentProps } from '@react-navigation/drawer'
 import type { Conversation } from '@april/core'
 
-export function DrawerContent(): JSX.Element {
+export function DrawerContent({ navigation }: DrawerContentComponentProps): JSX.Element {
   const colors = useTheme()
   const insets = useSafeAreaInsets()
-  const navigation = useNavigation()
   const { conversations, activeId, setActiveId, createNew, deleteConv, renameConv } =
     useConversationsStore()
   const [query, setQuery] = useState('')
@@ -23,12 +23,12 @@ export function DrawerContent(): JSX.Element {
 
   const handleSelect = (id: string): void => {
     setActiveId(id)
-    navigation.dispatch(DrawerActions.closeDrawer())
+    navigation.closeDrawer()
   }
 
   const handleNew = async (): Promise<void> => {
     await createNew()
-    navigation.dispatch(DrawerActions.closeDrawer())
+    navigation.closeDrawer()
   }
 
   const handleDelete = (conv: Conversation): void => {
@@ -149,9 +149,8 @@ export function DrawerContent(): JSX.Element {
       {/* Footer */}
       <Pressable
         onPress={() => {
-          navigation.dispatch(DrawerActions.closeDrawer())
-          // Navigate to settings screen
-          ;(navigation as any).navigate('settings')
+          navigation.closeDrawer()
+          router.push('/settings')
         }}
         style={[styles.footer, { borderTopColor: colors.border }]}
       >
