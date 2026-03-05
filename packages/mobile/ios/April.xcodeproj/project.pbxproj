@@ -7,29 +7,29 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		093827732170658FC921D634 /* libPods-April.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 517C5E0E9DD36F10B738DF9B /* libPods-April.a */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
-		267FFC7AA16082463467EF11 /* libPods-April.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 09D318BA80ACD0DF749DD8F5 /* libPods-April.a */; };
-		39418533E9388DC818E2025D /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 77D93E8634B2C376F59C0615 /* PrivacyInfo.xcprivacy */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
-		83CDBD7565FCCA71921C9FD9 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77524603A59606D77F018127 /* ExpoModulesProvider.swift */; };
+		7AA170C9518FAC7AF4ED551E /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 53121FCF382901F148FE2C08 /* PrivacyInfo.xcprivacy */; };
+		80AE215620A929689174A445 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = F281B8F00176C0CFDCD548EB /* ExpoModulesProvider.swift */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		09D318BA80ACD0DF749DD8F5 /* libPods-April.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-April.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07F961A680F5B00A75B9A /* April.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = April.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = April/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = April/Info.plist; sourceTree = "<group>"; };
-		3BC483FEE74457F403FEAB1B /* Pods-April.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-April.release.xcconfig"; path = "Target Support Files/Pods-April/Pods-April.release.xcconfig"; sourceTree = "<group>"; };
-		77524603A59606D77F018127 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-April/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
-		77D93E8634B2C376F59C0615 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = April/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		19D7C3703602FBCC1B6ABA7D /* Pods-April.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-April.debug.xcconfig"; path = "Target Support Files/Pods-April/Pods-April.debug.xcconfig"; sourceTree = "<group>"; };
+		517C5E0E9DD36F10B738DF9B /* libPods-April.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-April.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		53121FCF382901F148FE2C08 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = April/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		564BD457EBCAD91EECD3B435 /* Pods-April.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-April.release.xcconfig"; path = "Target Support Files/Pods-April/Pods-April.release.xcconfig"; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = April/SplashScreen.storyboard; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
-		DCDF9D34C1B0889C08603424 /* Pods-April.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-April.debug.xcconfig"; path = "Target Support Files/Pods-April/Pods-April.debug.xcconfig"; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = April/AppDelegate.swift; sourceTree = "<group>"; };
 		F11748442D0722820044C1D9 /* April-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "April-Bridging-Header.h"; path = "April/April-Bridging-Header.h"; sourceTree = "<group>"; };
+		F281B8F00176C0CFDCD548EB /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-April/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -37,7 +37,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				267FFC7AA16082463467EF11 /* libPods-April.a in Frameworks */,
+				093827732170658FC921D634 /* libPods-April.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -53,7 +53,7 @@
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
-				77D93E8634B2C376F59C0615 /* PrivacyInfo.xcprivacy */,
+				53121FCF382901F148FE2C08 /* PrivacyInfo.xcprivacy */,
 			);
 			name = April;
 			sourceTree = "<group>";
@@ -62,17 +62,9 @@
 			isa = PBXGroup;
 			children = (
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
-				09D318BA80ACD0DF749DD8F5 /* libPods-April.a */,
+				517C5E0E9DD36F10B738DF9B /* libPods-April.a */,
 			);
 			name = Frameworks;
-			sourceTree = "<group>";
-		};
-		7D2649DB642876C43CBA75A2 /* April */ = {
-			isa = PBXGroup;
-			children = (
-				77524603A59606D77F018127 /* ExpoModulesProvider.swift */,
-			);
-			name = April;
 			sourceTree = "<group>";
 		};
 		832341AE1AAA6A7D00B99B32 /* Libraries */ = {
@@ -89,8 +81,8 @@
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
-				8C66366210ABFCF508550AA6 /* Pods */,
-				F0BA1307FF4C79B065DBCF94 /* ExpoModulesProviders */,
+				BA1CCE44348B95FD7330E5B2 /* Pods */,
+				A3AF9D05F23C5D6CE5C1D9D3 /* ExpoModulesProviders */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -105,12 +97,29 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		8C66366210ABFCF508550AA6 /* Pods */ = {
+		842044AF77EC25CE7380A277 /* April */ = {
 			isa = PBXGroup;
 			children = (
-				DCDF9D34C1B0889C08603424 /* Pods-April.debug.xcconfig */,
-				3BC483FEE74457F403FEAB1B /* Pods-April.release.xcconfig */,
+				F281B8F00176C0CFDCD548EB /* ExpoModulesProvider.swift */,
 			);
+			name = April;
+			sourceTree = "<group>";
+		};
+		A3AF9D05F23C5D6CE5C1D9D3 /* ExpoModulesProviders */ = {
+			isa = PBXGroup;
+			children = (
+				842044AF77EC25CE7380A277 /* April */,
+			);
+			name = ExpoModulesProviders;
+			sourceTree = "<group>";
+		};
+		BA1CCE44348B95FD7330E5B2 /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				19D7C3703602FBCC1B6ABA7D /* Pods-April.debug.xcconfig */,
+				564BD457EBCAD91EECD3B435 /* Pods-April.release.xcconfig */,
+			);
+			name = Pods;
 			path = Pods;
 			sourceTree = "<group>";
 		};
@@ -123,14 +132,6 @@
 			path = April/Supporting;
 			sourceTree = "<group>";
 		};
-		F0BA1307FF4C79B065DBCF94 /* ExpoModulesProviders */ = {
-			isa = PBXGroup;
-			children = (
-				7D2649DB642876C43CBA75A2 /* April */,
-			);
-			name = ExpoModulesProviders;
-			sourceTree = "<group>";
-		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -139,13 +140,13 @@
 			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "April" */;
 			buildPhases = (
 				08A4A3CD28434E44B6B9DE2E /* [CP] Check Pods Manifest.lock */,
-				67236192EB262DBD75DDD883 /* [Expo] Configure project */,
+				1315914963891E9B6ED38CA7 /* [Expo] Configure project */,
 				13B07F871A680F5B00A75B9A /* Sources */,
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
 				13B07F8E1A680F5B00A75B9A /* Resources */,
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */,
-				B4D39E769818803DF4794DB6 /* [CP] Embed Pods Frameworks */,
+				2B44F716B0A7CDF7E439A8ED /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
@@ -195,7 +196,7 @@
 				BB2F792D24A3F905000567C9 /* Expo.plist in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
-				39418533E9388DC818E2025D /* PrivacyInfo.xcprivacy in Resources */,
+				7AA170C9518FAC7AF4ED551E /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -241,7 +242,7 @@
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
-		67236192EB262DBD75DDD883 /* [Expo] Configure project */ = {
+		1315914963891E9B6ED38CA7 /* [Expo] Configure project */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
@@ -252,6 +253,7 @@
 			inputPaths = (
 				"$(SRCROOT)/.xcode.env",
 				"$(SRCROOT)/.xcode.env.local",
+				"$(SRCROOT)/April/April.entitlements",
 				"$(SRCROOT)/Pods/Target Support Files/Pods-April/expo-configure-project.sh",
 			);
 			name = "[Expo] Configure project";
@@ -263,6 +265,28 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "# This script configures Expo modules and generates the modules provider file.\nbash -l -c \"./Pods/Target\\ Support\\ Files/Pods-April/expo-configure-project.sh\"\n";
+		};
+		2B44F716B0A7CDF7E439A8ED /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-April/Pods-April-frameworks.sh",
+				"${PODS_XCFRAMEWORKS_BUILD_DIR}/React-Core-prebuilt/React.framework/React",
+				"${PODS_XCFRAMEWORKS_BUILD_DIR}/ReactNativeDependencies/ReactNativeDependencies.framework/ReactNativeDependencies",
+				"${PODS_XCFRAMEWORKS_BUILD_DIR}/hermes-engine/Pre-built/hermesvm.framework/hermesvm",
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputPaths = (
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/React.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/ReactNativeDependencies.framework",
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/hermesvm.framework",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-April/Pods-April-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
 		};
 		800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -296,28 +320,6 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-April/Pods-April-resources.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
-		B4D39E769818803DF4794DB6 /* [CP] Embed Pods Frameworks */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-April/Pods-April-frameworks.sh",
-				"${PODS_XCFRAMEWORKS_BUILD_DIR}/React-Core-prebuilt/React.framework/React",
-				"${PODS_XCFRAMEWORKS_BUILD_DIR}/ReactNativeDependencies/ReactNativeDependencies.framework/ReactNativeDependencies",
-				"${PODS_XCFRAMEWORKS_BUILD_DIR}/hermes-engine/Pre-built/hermesvm.framework/hermesvm",
-			);
-			name = "[CP] Embed Pods Frameworks";
-			outputPaths = (
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/React.framework",
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/ReactNativeDependencies.framework",
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/hermesvm.framework",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-April/Pods-April-frameworks.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -326,7 +328,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
-				83CDBD7565FCCA71921C9FD9 /* ExpoModulesProvider.swift in Sources */,
+				80AE215620A929689174A445 /* ExpoModulesProvider.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -335,12 +337,12 @@
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = DCDF9D34C1B0889C08603424 /* Pods-April.debug.xcconfig */;
+			baseConfigurationReference = 19D7C3703602FBCC1B6ABA7D /* Pods-April.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = April/April.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = C3SLR8Z4K8;
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"$(inherited)",
@@ -359,23 +361,24 @@
 					"-lc++",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG";
-				PRODUCT_BUNDLE_IDENTIFIER = org.name.April;
+				PRODUCT_BUNDLE_IDENTIFIER = com.april.agent;
 				PRODUCT_NAME = April;
 				SWIFT_OBJC_BRIDGING_HEADER = "April/April-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
 				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Debug;
 		};
 		13B07F951A680F5B00A75B9A /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 3BC483FEE74457F403FEAB1B /* Pods-April.release.xcconfig */;
+			baseConfigurationReference = 564BD457EBCAD91EECD3B435 /* Pods-April.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = April/April.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = C3SLR8Z4K8;
 				INFOPLIST_FILE = April/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -389,10 +392,11 @@
 					"-lc++",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
-				PRODUCT_BUNDLE_IDENTIFIER = org.name.April;
+				PRODUCT_BUNDLE_IDENTIFIER = com.april.agent;
 				PRODUCT_NAME = April;
 				SWIFT_OBJC_BRIDGING_HEADER = "April/April-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
 				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Release;
