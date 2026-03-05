@@ -18,7 +18,16 @@ public class FolderPickerModule: Module {
         }
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.folder])
         picker.allowsMultipleSelection = false
-        let delegate = FolderPickerDelegate(promise: promise)
+        let delegate = FolderPickerDelegate { [weak self] result in
+          guard let self = self else { promise.resolve(nil); return }
+          if let result = result {
+            // Keep security scope active for subsequent file reads
+            self.activeURLs[result.uri] = result.url
+            promise.resolve(["uri": result.uri, "bookmark": result.bookmark])
+          } else {
+            promise.resolve(nil)
+          }
+        }
         self.pickerDelegate = delegate
         picker.delegate = delegate
         topVC.present(picker, animated: true)
@@ -143,28 +152,34 @@ public class FolderPickerModule: Module {
 }
 
 private class FolderPickerDelegate: NSObject, UIDocumentPickerDelegate {
-  private let promise: Promise
+  struct PickResult {
+    let url: URL
+    let uri: String
+    let bookmark: String
+  }
 
-  init(promise: Promise) {
-    self.promise = promise
+  private let completion: (PickResult?) -> Void
+
+  init(completion: @escaping (PickResult?) -> Void) {
+    self.completion = completion
   }
 
   func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-    guard let url = urls.first else { promise.resolve(nil); return }
+    guard let url = urls.first else { completion(nil); return }
 
-    // Attempt to create a bookmark for persistent access across app restarts.
-    // startAccessingSecurityScopedResource is required for out-of-sandbox URLs.
-    let accessing = url.startAccessingSecurityScopedResource()
+    // Start security scope and keep it active — the module will store the URL
+    // in activeURLs to maintain access for subsequent file reads.
+    _ = url.startAccessingSecurityScopedResource()
     var bookmarkString = ""
     if let data = try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil) {
       bookmarkString = data.base64EncodedString()
     }
-    if accessing { url.stopAccessingSecurityScopedResource() }
-
-    promise.resolve(["uri": url.absoluteString, "bookmark": bookmarkString])
+    // Note: do NOT call stopAccessingSecurityScopedResource here.
+    // The module keeps the scope alive via activeURLs.
+    completion(PickResult(url: url, uri: url.absoluteString, bookmark: bookmarkString))
   }
 
   func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-    promise.resolve(nil)
+    completion(nil)
   }
 }

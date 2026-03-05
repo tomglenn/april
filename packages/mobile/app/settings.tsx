@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import {
   View,
   Text,
@@ -108,11 +108,18 @@ export default function SettingsScreen(): JSX.Element {
   const navigation = useNavigation()
   const { settings, update, setDataFolderWithBookmark } = useSettingsStore()
   const loadConversations = useConversationsStore((s) => s.load)
-  const [personality, setPersonality] = useState<Personality | null>(null)
-  const [initialized, setInitialized] = useState(false)
+  const [personality, setPersonality] = useState<Personality | null>(() =>
+    settings ? detectPersonality(settings.personalityPrompt ?? '') : null
+  )
   const scrollRef = useRef<ScrollView>(null)
   const customInputWrapRef = useRef<View>(null)
   const scrollY = useRef(0)
+
+  useEffect(() => {
+    if (settings) {
+      setPersonality(detectPersonality(settings.personalityPrompt ?? ''))
+    }
+  }, [settings?.personalityPrompt])
 
   if (!settings) {
     return (
@@ -120,11 +127,6 @@ export default function SettingsScreen(): JSX.Element {
         <Text style={{ color: colors.muted, textAlign: 'center', marginTop: 40 }}>Loading...</Text>
       </SafeAreaView>
     )
-  }
-
-  if (!initialized) {
-    setPersonality(detectPersonality(settings.personalityPrompt ?? ''))
-    setInitialized(true)
   }
 
   const handleUpdate = (partial: Record<string, unknown>): void => {
