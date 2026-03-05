@@ -282,6 +282,7 @@ export function ConversationView({ onOpenSettings, sidebarCollapsed, onExpandSid
                   key={msg.id}
                   message={message}
                   isStreaming={isActiveStreaming && i === activeConv.messages.length - 1}
+                  isLast={i === activeConv.messages.length - 1}
                   onRetry={msg.role === 'user' && msg.error ? () => retryMessage(msg) : undefined}
                   hasOpenAIKey={hasOpenAIKey}
                   voicePhase={voice.speakingState?.id === msg.id ? voice.speakingState.phase : null}
