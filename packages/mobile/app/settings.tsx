@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useRef } from 'react'
 import {
   View,
   Text,
@@ -6,7 +6,9 @@ import {
   ScrollView,
   Pressable,
   StyleSheet,
-  Alert
+  Alert,
+  Keyboard,
+  Dimensions
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native'
@@ -95,6 +97,9 @@ export default function SettingsScreen(): JSX.Element {
   const { settings, update } = useSettingsStore()
   const [personality, setPersonality] = useState<Personality | null>(null)
   const [initialized, setInitialized] = useState(false)
+  const scrollRef = useRef<ScrollView>(null)
+  const customInputWrapRef = useRef<View>(null)
+  const scrollY = useRef(0)
 
   if (!settings) {
     return (
@@ -127,6 +132,23 @@ export default function SettingsScreen(): JSX.Element {
     handleUpdate({ memories: (settings.memories ?? []).filter((m) => m.id !== id) })
   }
 
+  const handleCustomPromptFocus = (): void => {
+    setTimeout(() => {
+      customInputWrapRef.current?.measureInWindow((_x, y, _w, h) => {
+        const keyboardHeight = Keyboard.metrics()?.height ?? 336
+        const screenHeight = Dimensions.get('window').height
+        const visibleBottom = screenHeight - keyboardHeight
+        const inputBottom = y + h
+        if (inputBottom > visibleBottom) {
+          scrollRef.current?.scrollTo({
+            y: scrollY.current + (inputBottom - visibleBottom) + 16,
+            animated: true
+          })
+        }
+      })
+    }, 350)
+  }
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
@@ -137,7 +159,13 @@ export default function SettingsScreen(): JSX.Element {
         <View style={{ width: 34 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
+        onScroll={(e) => { scrollY.current = e.nativeEvent.contentOffset.y }}
+        scrollEventThrottle={16}>
         {/* Providers */}
         <Section title="API Keys">
           <ApiKeyField
@@ -252,18 +280,22 @@ export default function SettingsScreen(): JSX.Element {
               })}
             </View>
             {personality === 'custom' && (
-              <TextInput
-                value={settings.customPersonalityPrompt ?? ''}
-                onChangeText={(v) => handleUpdate({ personalityPrompt: v, customPersonalityPrompt: v })}
-                placeholder="Describe how April should communicate…"
-                placeholderTextColor={colors.muted}
-                multiline
-                style={[
-                  styles.fieldInput,
-                  styles.customPromptInput,
-                  { color: colors.text, borderColor: colors.border, backgroundColor: colors.bg }
-                ]}
-              />
+              <View ref={customInputWrapRef}>
+                <TextInput
+                  value={settings.customPersonalityPrompt ?? ''}
+                  onChangeText={(v) => handleUpdate({ personalityPrompt: v, customPersonalityPrompt: v })}
+                  onFocus={handleCustomPromptFocus}
+                  placeholder="Describe how April should communicate…"
+                  placeholderTextColor={colors.muted}
+                  multiline
+                  scrollEnabled
+                  style={[
+                    styles.fieldInput,
+                    styles.customPromptInput,
+                    { color: colors.text, borderColor: colors.border, backgroundColor: colors.bg }
+                  ]}
+                />
+              </View>
             )}
           </View>
         </Section>
@@ -387,7 +419,7 @@ const styles = StyleSheet.create({
     padding: 10,
     borderWidth: 1,
     borderRadius: 8,
-    minHeight: 80,
+    height: 110,
     textAlignVertical: 'top'
   },
   memoryItem: {

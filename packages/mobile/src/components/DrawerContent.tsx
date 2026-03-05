@@ -152,7 +152,7 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps): JSX.
           navigation.closeDrawer()
           router.push('/settings')
         }}
-        style={[styles.footer, { borderTopColor: colors.border }]}
+        style={[styles.footer, { borderTopColor: colors.border, paddingBottom: insets.bottom + 14 }]}
       >
         <Settings size={14} color={colors.muted} />
         <Text style={{ color: colors.muted, fontSize: 13 }}>Settings</Text>
