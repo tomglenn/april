@@ -11,23 +11,23 @@ export interface ThemeColors {
 
 export const themes: Record<'dark' | 'light', ThemeColors> = {
   dark: {
-    bg: '#0f0f10',
-    surface: '#1a1a1e',
-    surfaceAlt: '#222226',
-    border: '#2a2a2e',
-    text: '#e4e4e7',
-    muted: '#71717a',
-    accent: '#6366f1',
+    bg: '#0d0d0f',
+    surface: '#16161a',
+    surfaceAlt: '#1e1e24',
+    border: '#2a2a35',
+    text: '#e8e8f0',
+    muted: '#666680',
+    accent: '#3b82f6',
     error: '#ef4444'
   },
   light: {
-    bg: '#ffffff',
-    surface: '#f4f4f5',
-    surfaceAlt: '#e4e4e7',
-    border: '#d4d4d8',
-    text: '#18181b',
-    muted: '#71717a',
-    accent: '#6366f1',
+    bg: '#f5f5f7',
+    surface: '#ffffff',
+    surfaceAlt: '#f0f0f4',
+    border: '#e2e2e8',
+    text: '#1a1a2e',
+    muted: '#888899',
+    accent: '#3b82f6',
     error: '#ef4444'
   }
 }

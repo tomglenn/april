@@ -25,7 +25,7 @@ export function ModelPicker({ model, provider, onSelect, filterProvider }: Props
     <>
       <Pressable
         onPress={() => setVisible(true)}
-        style={[styles.trigger, { backgroundColor: colors.surface, borderColor: colors.border }]}
+        style={[styles.trigger, { backgroundColor: colors.bg, borderColor: colors.border }]}
       >
         <Text style={{ color: colors.text, fontSize: 14, flex: 1 }} numberOfLines={1}>
           {current?.label ?? (model || 'Select model')}
