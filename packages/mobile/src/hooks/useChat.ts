@@ -289,7 +289,11 @@ export function useChat(conversationId: string | null): UseChatReturn {
           )
         }
       } catch (err) {
-        markError(err instanceof Error ? err.message : String(err))
+        if (err instanceof Error && err.name === 'AbortError') {
+          // User cancelled — not an error
+        } else {
+          markError(err instanceof Error ? err.message : String(err))
+        }
       } finally {
         abortControllers.current.delete(convId)
 
