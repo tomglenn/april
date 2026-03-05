@@ -146,6 +146,7 @@ export function ConversationView(): JSX.Element {
                 <Message
                   message={message}
                   isStreaming={isActiveStreaming && index === activeConv.messages.length - 1}
+                  isLast={index === activeConv.messages.length - 1}
                   onRetry={msg.role === 'user' && msg.error ? () => retryMessage(msg) : undefined}
                 />
               )
@@ -163,7 +164,7 @@ export function ConversationView(): JSX.Element {
           provider={effectiveProvider}
           missingKey={!!missingKey}
         />
-        <View style={{ height: insets.bottom }} />
+        <View style={{ height: insets.bottom, backgroundColor: colors.surface }} />
       </KeyboardAvoidingView>
     </SafeAreaView>
   )

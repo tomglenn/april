@@ -9,10 +9,11 @@ import type { Message as MessageType, ContentBlock } from '@april/core'
 interface Props {
   message: MessageType
   isStreaming?: boolean
+  isLast?: boolean
   onRetry?: () => void
 }
 
-export function Message({ message, isStreaming = false, onRetry }: Props): JSX.Element {
+export function Message({ message, isStreaming = false, isLast = false, onRetry }: Props): JSX.Element {
   const colors = useTheme()
   const isUser = message.role === 'user'
   const label = isUser ? 'You' : 'April'
@@ -41,7 +42,7 @@ export function Message({ message, isStreaming = false, onRetry }: Props): JSX.E
   }
 
   return (
-    <View style={[styles.messageRow, { backgroundColor: isUser ? `${colors.surface}80` : 'transparent', borderBottomColor: colors.border }]}>
+    <View style={[styles.messageRow, { backgroundColor: isUser ? `${colors.surface}80` : 'transparent', borderBottomColor: colors.border, borderBottomWidth: isLast && !isUser ? 0 : StyleSheet.hairlineWidth }]}>
       <Text style={[styles.label, { color: colors.muted }]}>{label}</Text>
 
       {items.map((item, i) => {
@@ -101,8 +102,7 @@ export function Message({ message, isStreaming = false, onRetry }: Props): JSX.E
 const styles = StyleSheet.create({
   messageRow: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth
+    paddingVertical: 12
   },
   label: {
     fontSize: 11,
