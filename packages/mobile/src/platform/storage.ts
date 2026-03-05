@@ -59,6 +59,7 @@ export async function ensureDataDir(): Promise<void> {
 }
 
 export async function loadSettingsIntoCache(): Promise<void> {
+  _cachedSettings = { ...SYNCED_DEFAULTS }
   try {
     const raw = await FolderPickerModule.readFile(_settingsFile)
     if (raw) {
