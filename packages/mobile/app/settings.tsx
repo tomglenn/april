@@ -16,6 +16,31 @@ import { useSettingsStore } from '../src/stores/settings'
 import { ModelPicker } from '../src/components/ModelPicker'
 import type { Provider, Memory } from '@april/core'
 
+type Personality = 'professional' | 'friendly' | 'creative' | 'concise' | 'custom'
+
+const PERSONALITY_PROMPTS: Record<Exclude<Personality, 'custom'>, string> = {
+  professional: 'Communicate formally and precisely. Keep responses well-structured and focused on the task. Avoid small talk.',
+  friendly: 'Communicate warmly and conversationally. Be encouraging and personable.',
+  creative: 'Bring imagination and enthusiasm to everything. Think expansively and embrace creative exploration.',
+  concise: 'Always be brief. Get to the point immediately. Use as few words as possible while remaining accurate.'
+}
+
+const PERSONALITIES: { id: Personality; label: string; description: string }[] = [
+  { id: 'professional', label: 'Professional', description: 'Formal and structured' },
+  { id: 'friendly', label: 'Friendly', description: 'Warm and conversational' },
+  { id: 'creative', label: 'Creative', description: 'Imaginative and expansive' },
+  { id: 'concise', label: 'Concise', description: 'Brief and to the point' },
+  { id: 'custom', label: 'Custom', description: 'Write your own' }
+]
+
+function detectPersonality(personalityPrompt: string): Personality | null {
+  if (!personalityPrompt) return null
+  for (const [id, text] of Object.entries(PERSONALITY_PROMPTS)) {
+    if (personalityPrompt === text) return id as Personality
+  }
+  return 'custom'
+}
+
 function Section({ title, children }: { title: string; children: React.ReactNode }): JSX.Element {
   const colors = useTheme()
   return (
@@ -54,9 +79,9 @@ function ApiKeyField({
           secureTextEntry={!visible}
           autoCapitalize="none"
           autoCorrect={false}
-          style={[styles.fieldInput, { color: colors.text }]}
+          style={[styles.fieldInput, styles.keyInput, { color: colors.text }]}
         />
-        <Pressable onPress={() => setVisible((v) => !v)} style={styles.eyeBtn}>
+        <Pressable onPress={() => setVisible((v) => !v)} style={styles.eyeBtn} hitSlop={8}>
           {visible ? <EyeOff size={16} color={colors.muted} /> : <Eye size={16} color={colors.muted} />}
         </Pressable>
       </View>
@@ -68,6 +93,8 @@ export default function SettingsScreen(): JSX.Element {
   const colors = useTheme()
   const navigation = useNavigation()
   const { settings, update } = useSettingsStore()
+  const [personality, setPersonality] = useState<Personality | null>(null)
+  const [initialized, setInitialized] = useState(false)
 
   if (!settings) {
     return (
@@ -77,20 +104,23 @@ export default function SettingsScreen(): JSX.Element {
     )
   }
 
+  if (!initialized) {
+    setPersonality(detectPersonality(settings.personalityPrompt ?? ''))
+    setInitialized(true)
+  }
+
   const handleUpdate = (partial: Record<string, unknown>): void => {
     update(partial as any)
   }
 
-  const addMemory = (): void => {
-    Alert.prompt('New Memory', 'What should April remember?', (text) => {
-      if (!text?.trim()) return
-      const memory: Memory = {
-        id: Date.now().toString(),
-        content: text.trim(),
-        createdAt: Date.now()
-      }
-      handleUpdate({ memories: [...(settings.memories ?? []), memory] })
-    })
+  const selectPersonality = (id: Personality): void => {
+    setPersonality(id)
+    if (id !== 'custom') {
+      handleUpdate({ personalityPrompt: PERSONALITY_PROMPTS[id] })
+    } else {
+      const saved = settings.customPersonalityPrompt ?? ''
+      handleUpdate({ personalityPrompt: saved })
+    }
   }
 
   const deleteMemory = (id: string): void => {
@@ -161,7 +191,7 @@ export default function SettingsScreen(): JSX.Element {
           </View>
         </Section>
 
-        {/* Personalisation */}
+        {/* About You */}
         <Section title="About You">
           <View style={[styles.field, { borderBottomColor: colors.border }]}>
             <Text style={[styles.fieldLabel, { color: colors.text }]}>Name</Text>
@@ -198,16 +228,43 @@ export default function SettingsScreen(): JSX.Element {
 
         {/* Personality */}
         <Section title="Personality">
-          <View style={styles.field}>
-            <Text style={[styles.fieldLabel, { color: colors.text }]}>Custom Instructions</Text>
-            <TextInput
-              value={settings.customPersonalityPrompt}
-              onChangeText={(v) => handleUpdate({ customPersonalityPrompt: v })}
-              placeholder="Additional personality instructions for April..."
-              placeholderTextColor={colors.muted}
-              multiline
-              style={[styles.fieldInput, { color: colors.text, minHeight: 80 }]}
-            />
+          <View style={{ padding: 14 }}>
+            <View style={styles.personalityGrid}>
+              {PERSONALITIES.map(({ id, label, description }) => {
+                const active = personality === id
+                return (
+                  <Pressable
+                    key={id}
+                    onPress={() => selectPersonality(id)}
+                    style={[
+                      styles.personalityBtn,
+                      {
+                        backgroundColor: colors.bg,
+                        borderColor: active ? colors.accent : colors.border,
+                        borderWidth: active ? 2 : 1
+                      }
+                    ]}
+                  >
+                    <Text style={[styles.personalityLabel, { color: colors.text }]}>{label}</Text>
+                    <Text style={[styles.personalityDesc, { color: colors.muted }]}>{description}</Text>
+                  </Pressable>
+                )
+              })}
+            </View>
+            {personality === 'custom' && (
+              <TextInput
+                value={settings.customPersonalityPrompt ?? ''}
+                onChangeText={(v) => handleUpdate({ personalityPrompt: v, customPersonalityPrompt: v })}
+                placeholder="Describe how April should communicate…"
+                placeholderTextColor={colors.muted}
+                multiline
+                style={[
+                  styles.fieldInput,
+                  styles.customPromptInput,
+                  { color: colors.text, borderColor: colors.border, backgroundColor: colors.bg }
+                ]}
+              />
+            )}
           </View>
         </Section>
 
@@ -215,8 +272,8 @@ export default function SettingsScreen(): JSX.Element {
         <Section title="Memories">
           <View style={{ padding: 14 }}>
             {(settings.memories ?? []).length === 0 ? (
-              <Text style={{ color: colors.muted, fontSize: 13, textAlign: 'center', marginBottom: 12 }}>
-                No memories yet
+              <Text style={{ color: colors.muted, fontSize: 13, textAlign: 'center' }}>
+                No memories yet. April will save things here automatically.
               </Text>
             ) : (
               (settings.memories ?? []).map((m) => (
@@ -228,31 +285,6 @@ export default function SettingsScreen(): JSX.Element {
                 </View>
               ))
             )}
-            <Pressable
-              onPress={addMemory}
-              style={[styles.addBtn, { borderColor: colors.border }]}
-            >
-              <Text style={{ color: colors.accent, fontSize: 13, fontWeight: '500' }}>+ Add Memory</Text>
-            </Pressable>
-          </View>
-        </Section>
-
-        {/* Voice */}
-        <Section title="Voice">
-          <View style={[styles.field, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.fieldLabel, { color: colors.text }]}>Auto-play responses</Text>
-            <Pressable
-              onPress={() => handleUpdate({ voiceAutoPlay: !settings.voiceAutoPlay })}
-              style={[
-                styles.toggle,
-                { backgroundColor: settings.voiceAutoPlay ? colors.accent : colors.bg }
-              ]}
-            >
-              <View style={[
-                styles.toggleKnob,
-                { transform: [{ translateX: settings.voiceAutoPlay ? 18 : 2 }] }
-              ]} />
-            </Pressable>
           </View>
         </Section>
 
@@ -315,8 +347,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center'
   },
+  keyInput: {
+    flex: 1
+  },
   eyeBtn: {
-    padding: 6
+    padding: 6,
+    marginLeft: 4
   },
   themeRow: {
     flexDirection: 'row',
@@ -328,31 +364,37 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1
   },
+  personalityGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8
+  },
+  personalityBtn: {
+    width: '47%',
+    padding: 12,
+    borderRadius: 10
+  },
+  personalityLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 2
+  },
+  personalityDesc: {
+    fontSize: 11
+  },
+  customPromptInput: {
+    marginTop: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderRadius: 8,
+    minHeight: 80,
+    textAlignVertical: 'top'
+  },
   memoryItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     paddingVertical: 8,
     borderBottomWidth: StyleSheet.hairlineWidth
-  },
-  addBtn: {
-    alignItems: 'center',
-    paddingVertical: 10,
-    marginTop: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderStyle: 'dashed'
-  },
-  toggle: {
-    width: 40,
-    height: 24,
-    borderRadius: 12,
-    justifyContent: 'center'
-  },
-  toggleKnob: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#fff'
   }
 })
