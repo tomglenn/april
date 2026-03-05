@@ -1,5 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk'
-import OpenAI from 'openai'
+import { createFetchAnthropicCaller, createFetchOpenAICaller } from './http'
+import type { AnthropicMessageParam, OpenAIMessageParam } from './chat'
 
 const MAX_TOOL_RESULT_CHARS = 12_000
 
@@ -37,21 +37,21 @@ New messages to incorporate:
 Updated summary:`
 
 async function callHaikuForSummary(prompt: string, messages: string, apiKey: string): Promise<string> {
-  const anthropic = new Anthropic({ apiKey })
-  const response = await anthropic.messages.create({
+  const caller = createFetchAnthropicCaller(apiKey)
+  const response = await caller.createMessage({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 300,
     messages: [{ role: 'user', content: prompt + '\n\n' + messages }]
   })
   const textBlock = response.content.find((b) => b.type === 'text')
-  return textBlock ? (textBlock as Anthropic.TextBlock).text.trim() : ''
+  return textBlock?.text?.trim() ?? ''
 }
 
-function anthropicMessagesToText(messages: Anthropic.MessageParam[]): string {
+function anthropicMessagesToText(messages: AnthropicMessageParam[]): string {
   return messages.map((msg) => {
     const role = msg.role
     if (typeof msg.content === 'string') return `${role}: ${msg.content}`
-    const parts = (msg.content as Anthropic.ContentBlockParam[]).map((block) => {
+    const parts = (msg.content as Array<Record<string, unknown>>).map((block) => {
       if ('text' in block && typeof block.text === 'string') return block.text
       if ('type' in block && block.type === 'tool_use') return `[tool: ${(block as { name: string }).name}]`
       if ('type' in block && block.type === 'tool_result') return '[tool result]'
@@ -61,19 +61,19 @@ function anthropicMessagesToText(messages: Anthropic.MessageParam[]): string {
   }).join('\n')
 }
 
-function openaiMessagesToText(messages: OpenAI.ChatCompletionMessageParam[]): string {
+function openaiMessagesToText(messages: OpenAIMessageParam[]): string {
   return messages.map((msg) => {
     const role = msg.role
     if ('content' in msg && typeof msg.content === 'string') return `${role}: ${msg.content}`
     if ('content' in msg && Array.isArray(msg.content)) {
-      const text = msg.content.map((p) => ('text' in p ? p.text : '')).filter(Boolean).join(' ')
+      const text = msg.content.map((p: Record<string, unknown>) => ('text' in p ? p.text : '')).filter(Boolean).join(' ')
       return `${role}: ${text}`
     }
     return `${role}: [message]`
   }).join('\n')
 }
 
-function makeSummaryMessage(summaryText: string): Anthropic.MessageParam {
+function makeSummaryMessage(summaryText: string): AnthropicMessageParam {
   return {
     role: 'user',
     content: `[Conversation summary]\n${summaryText}\n[End summary — continue in the same tone and style as described above]`
@@ -82,10 +82,10 @@ function makeSummaryMessage(summaryText: string): Anthropic.MessageParam {
 
 export async function summariseAnthropicMessages(
   conversationId: string,
-  messages: Anthropic.MessageParam[],
+  messages: AnthropicMessageParam[],
   apiKey: string,
   recentExchanges = 8
-): Promise<Anthropic.MessageParam[] | null> {
+): Promise<AnthropicMessageParam[] | null> {
   const { recentMessageWindow, minMessagesToSummarise, resummariseThreshold } = getContextThresholds(recentExchanges)
 
   if (messages.length < minMessagesToSummarise + recentMessageWindow) return null
@@ -155,11 +155,11 @@ export async function summariseAnthropicMessages(
 
 export async function summariseOpenAIMessages(
   conversationId: string,
-  messages: OpenAI.ChatCompletionMessageParam[],
+  messages: OpenAIMessageParam[],
   apiKey: string | undefined,
   provider: 'openai' | 'ollama',
   recentExchanges = 8
-): Promise<OpenAI.ChatCompletionMessageParam[] | null> {
+): Promise<OpenAIMessageParam[] | null> {
   // Skip summarisation for Ollama — no cheap model available
   if (provider === 'ollama' || !apiKey) return null
 
@@ -174,7 +174,7 @@ export async function summariseOpenAIMessages(
   const recentStart = convMsgs.length - recentMessageWindow
   const recentMessages = convMsgs.slice(recentStart)
 
-  const makeOpenAISummaryMsg = (text: string): OpenAI.ChatCompletionMessageParam => ({
+  const makeOpenAISummaryMsg = (text: string): OpenAIMessageParam => ({
     role: 'user',
     content: `[Conversation summary]\n${text}\n[End summary — continue in the same tone and style as described above]`
   })
@@ -205,12 +205,12 @@ export async function summariseOpenAIMessages(
 
     // Buffer too large — re-summarise
     try {
-      const openai = new OpenAI({ apiKey })
+      const caller = createFetchOpenAICaller(apiKey)
       const bufferText = openaiMessagesToText(buffer)
       const prompt = INCREMENTAL_PROMPT
         .replace('{previous_summary}', validCached.summary)
         .replace('{new_messages}', bufferText)
-      const resp = await openai.chat.completions.create({
+      const resp = await caller.createChat({
         model: 'gpt-4o-mini',
         max_tokens: 300,
         messages: [{ role: 'user', content: prompt }]
@@ -231,9 +231,9 @@ export async function summariseOpenAIMessages(
   // No cached summary: full summarisation from scratch
   const oldMessages = convMsgs.slice(0, recentStart)
   try {
-    const openai = new OpenAI({ apiKey })
+    const caller = createFetchOpenAICaller(apiKey)
     const oldText = openaiMessagesToText(oldMessages)
-    const resp = await openai.chat.completions.create({
+    const resp = await caller.createChat({
       model: 'gpt-4o-mini',
       max_tokens: 300,
       messages: [{ role: 'user', content: SUMMARISE_PROMPT + '\n\n' + oldText }]
@@ -273,7 +273,8 @@ export function getContextLimit(model: string): number {
 
 // ── Anthropic message truncation ─────────────────────────────────────────────
 
-function anthropicBlockChars(block: Anthropic.ContentBlockParam | Anthropic.ToolResultBlockParam): number {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function anthropicBlockChars(block: any): number {
   if ('text' in block && typeof block.text === 'string') return block.text.length
   if ('source' in block && typeof block.source === 'object') {
     const src = block.source as { data?: string }
@@ -286,9 +287,11 @@ function anthropicBlockChars(block: Anthropic.ContentBlockParam | Anthropic.Tool
 const OLD_TOOL_RESULT_PLACEHOLDER = '[result previously processed]'
 
 function truncateAnthropicBlock(
-  block: Anthropic.ContentBlockParam | Anthropic.ToolResultBlockParam,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  block: any,
   opts: { isLastUserImage: boolean; isRecentToolExchange: boolean }
-): Anthropic.ContentBlockParam | Anthropic.ToolResultBlockParam {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): any {
   // Strip base64 images from everything except the current (last) user message
   if (!opts.isLastUserImage && 'type' in block && block.type === 'image' && 'source' in block) {
     return { type: 'text', text: '[image previously shared]' }
@@ -313,10 +316,10 @@ function truncateAnthropicBlock(
 }
 
 export function truncateAnthropicMessages(
-  messages: Anthropic.MessageParam[],
+  messages: AnthropicMessageParam[],
   model: string,
   systemPromptChars: number
-): Anthropic.MessageParam[] {
+): AnthropicMessageParam[] {
   const contextLimit = getContextLimit(model)
   // Reserve 30% for response + tool defs
   const budget = Math.floor(contextLimit * 0.7)
@@ -330,7 +333,7 @@ export function truncateAnthropicMessages(
   for (let i = messages.length - 1; i >= 0; i--) {
     if (messages[i].role === 'user') {
       const content = messages[i].content
-      if (Array.isArray(content) && content.some((b) => 'type' in b && b.type === 'image')) {
+      if (Array.isArray(content) && content.some((b: Record<string, unknown>) => 'type' in b && b.type === 'image')) {
         lastUserImageIndex = i
         break
       }
@@ -345,15 +348,15 @@ export function truncateAnthropicMessages(
     if (messages[i].role === 'assistant') {
       const content = messages[i].content
       const hasToolUse = Array.isArray(content) && content.some(
-        (b) => 'type' in b && b.type === 'tool_use'
+        (b: Record<string, unknown>) => 'type' in b && b.type === 'tool_use'
       )
       if (hasToolUse) { recentToolExchangeStart = i; break }
     }
   }
 
-  const processed: Anthropic.MessageParam[] = messages.map((msg, i) => {
+  const processed: AnthropicMessageParam[] = messages.map((msg, i) => {
     if (typeof msg.content === 'string') return msg
-    const content = (msg.content as (Anthropic.ContentBlockParam | Anthropic.ToolResultBlockParam)[]).map(
+    const content = (msg.content as Array<Record<string, unknown>>).map(
       (block) => truncateAnthropicBlock(block, {
         isLastUserImage: i === lastUserImageIndex,
         isRecentToolExchange: i >= recentToolExchangeStart
@@ -366,7 +369,7 @@ export function truncateAnthropicMessages(
   const sizes = processed.map((msg) => {
     if (typeof msg.content === 'string') return Math.ceil(msg.content.length / 4)
     return Math.ceil(
-      (msg.content as (Anthropic.ContentBlockParam | Anthropic.ToolResultBlockParam)[])
+      (msg.content as Array<Record<string, unknown>>)
         .reduce((sum, b) => sum + anthropicBlockChars(b), 0) / 4
     )
   })
@@ -399,13 +402,16 @@ export function truncateAnthropicMessages(
 
 // ── OpenAI message truncation ────────────────────────────────────────────────
 
-function openaiMessageChars(msg: OpenAI.ChatCompletionMessageParam): number {
+function openaiMessageChars(msg: OpenAIMessageParam): number {
   if ('content' in msg) {
     if (typeof msg.content === 'string') return msg.content.length
     if (Array.isArray(msg.content)) {
-      return msg.content.reduce((sum, part) => {
-        if ('text' in part) return sum + part.text.length
-        if ('image_url' in part) return sum + (part.image_url.url?.length ?? 0)
+      return msg.content.reduce((sum: number, part: Record<string, unknown>) => {
+        if ('text' in part && typeof part.text === 'string') return sum + part.text.length
+        if ('image_url' in part) {
+          const iu = part.image_url as { url?: string }
+          return sum + (iu?.url?.length ?? 0)
+        }
         return sum + JSON.stringify(part).length
       }, 0)
     }
@@ -414,17 +420,20 @@ function openaiMessageChars(msg: OpenAI.ChatCompletionMessageParam): number {
 }
 
 function truncateOpenAIMessage(
-  msg: OpenAI.ChatCompletionMessageParam,
+  msg: OpenAIMessageParam,
   opts: { isLastUserImage: boolean; isRecentToolExchange: boolean }
-): OpenAI.ChatCompletionMessageParam {
+): OpenAIMessageParam {
   // Strip base64 images from everything except the current (last) user message with images
   if (!opts.isLastUserImage && msg.role === 'user' && Array.isArray(msg.content)) {
-    const content = msg.content.map((part) => {
-      if ('image_url' in part && part.image_url.url?.startsWith('data:')) {
-        return { type: 'text' as const, text: '[image previously shared]' }
+    const content = msg.content.map((part: Record<string, unknown>) => {
+      if ('image_url' in part) {
+        const iu = part.image_url as { url?: string }
+        if (iu?.url?.startsWith('data:')) {
+          return { type: 'text' as const, text: '[image previously shared]' }
+        }
       }
       return part
-    }) as OpenAI.ChatCompletionContentPart[]
+    })
     return { ...msg, content }
   }
 
@@ -442,9 +451,9 @@ function truncateOpenAIMessage(
 }
 
 export function truncateOpenAIMessages(
-  messages: OpenAI.ChatCompletionMessageParam[],
+  messages: OpenAIMessageParam[],
   model: string
-): OpenAI.ChatCompletionMessageParam[] {
+): OpenAIMessageParam[] {
   const contextLimit = getContextLimit(model)
   const budget = Math.floor(contextLimit * 0.7)
   let remaining = budget
@@ -462,7 +471,7 @@ export function truncateOpenAIMessages(
   let lastUserImageIndex = -1
   for (let i = convMsgs.length - 1; i >= 0; i--) {
     if (convMsgs[i].role === 'user' && Array.isArray(convMsgs[i].content) &&
-        (convMsgs[i].content as OpenAI.ChatCompletionContentPart[]).some(
+        (convMsgs[i].content as Array<Record<string, unknown>>).some(
           (p) => 'image_url' in p
         )) {
       lastUserImageIndex = i
