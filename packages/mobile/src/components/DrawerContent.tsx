@@ -24,11 +24,13 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps): JSX.
   const handleSelect = (id: string): void => {
     setActiveId(id)
     navigation.closeDrawer()
+    router.navigate('/')
   }
 
   const handleNew = async (): Promise<void> => {
     await createNew()
     navigation.closeDrawer()
+    router.navigate('/')
   }
 
   const handleDelete = (conv: Conversation): void => {
