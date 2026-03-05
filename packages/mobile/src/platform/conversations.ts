@@ -1,30 +1,23 @@
-import { File, Directory } from 'expo-file-system'
 import { getConvDir } from './storage'
+import { FolderPickerModule } from '../../modules/folder-picker'
 import type { Conversation } from '@april/core'
 
-function convFile(id: string): File {
-  return new File(getConvDir(), `${id}.json`)
+function convFileUri(id: string): string {
+  return getConvDir() + id + '.json'
 }
 
 export async function listConversations(): Promise<Conversation[]> {
   try {
-    const dir = getConvDir()
-    if (!dir.exists) return []
-
-    const entries = dir.list()
+    const files = await FolderPickerModule.listJsonFiles(getConvDir())
     const convs: Conversation[] = []
-
-    for (const entry of entries) {
-      if (entry instanceof File && entry.uri.endsWith('.json')) {
-        try {
-          const raw = await entry.text()
-          convs.push(JSON.parse(raw))
-        } catch {
-          // skip corrupt files
-        }
+    for (const uri of files) {
+      try {
+        const raw = await FolderPickerModule.readFile(uri)
+        if (raw) convs.push(JSON.parse(raw))
+      } catch {
+        // skip corrupt files
       }
     }
-
     convs.sort((a, b) => b.updatedAt - a.updatedAt)
     return convs
   } catch {
@@ -34,27 +27,17 @@ export async function listConversations(): Promise<Conversation[]> {
 
 export async function getConversation(id: string): Promise<Conversation | null> {
   try {
-    const file = convFile(id)
-    if (!file.exists) return null
-    const raw = await file.text()
-    return JSON.parse(raw)
+    const raw = await FolderPickerModule.readFile(convFileUri(id))
+    return raw ? JSON.parse(raw) : null
   } catch {
     return null
   }
 }
 
 export async function saveConversation(conv: Conversation): Promise<void> {
-  const file = convFile(conv.id)
-  file.write(JSON.stringify(conv, null, 2))
+  await FolderPickerModule.writeFile(convFileUri(conv.id), JSON.stringify(conv, null, 2))
 }
 
 export async function deleteConversation(id: string): Promise<void> {
-  try {
-    const file = convFile(id)
-    if (file.exists) {
-      file.delete()
-    }
-  } catch {
-    // ignore
-  }
+  await FolderPickerModule.deleteFile(convFileUri(id))
 }

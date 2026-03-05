@@ -32,6 +32,8 @@ PODS:
     - ExpoModulesCore
   - ExpoClipboard (55.0.8):
     - ExpoModulesCore
+  - ExpoDocumentPicker (55.0.8):
+    - ExpoModulesCore
   - ExpoDomWebView (55.0.3):
     - ExpoModulesCore
   - ExpoFileSystem (55.0.10):
@@ -100,6 +102,8 @@ PODS:
   - ExpoSymbols (55.0.5):
     - ExpoModulesCore
   - FBLazyVector (0.83.2)
+  - FolderPicker (1.0.0):
+    - ExpoModulesCore
   - hermes-engine (0.14.1):
     - hermes-engine/Pre-built (= 0.14.1)
   - hermes-engine/Pre-built (0.14.1)
@@ -2266,6 +2270,7 @@ DEPENDENCIES:
   - ExpoAsset (from `../node_modules/expo-asset/ios`)
   - ExpoAudio (from `../node_modules/expo-audio/ios`)
   - ExpoClipboard (from `../node_modules/expo-clipboard/ios`)
+  - ExpoDocumentPicker (from `../node_modules/expo-document-picker/ios`)
   - "ExpoDomWebView (from `../node_modules/@expo/dom-webview/ios`)"
   - ExpoFileSystem (from `../node_modules/expo-file-system/ios`)
   - ExpoFont (from `../node_modules/expo-font/ios`)
@@ -2284,6 +2289,7 @@ DEPENDENCIES:
   - ExpoSplashScreen (from `../node_modules/expo-splash-screen/ios`)
   - ExpoSymbols (from `../node_modules/expo-symbols/ios`)
   - FBLazyVector (from `../node_modules/react-native/Libraries/FBLazyVector`)
+  - FolderPicker (from `../modules/folder-picker/ios`)
   - hermes-engine (from `../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec`)
   - RCTDeprecation (from `../node_modules/react-native/ReactApple/Libraries/RCTFoundation/RCTDeprecation`)
   - RCTRequired (from `../node_modules/react-native/Libraries/Required`)
@@ -2386,6 +2392,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/expo-audio/ios"
   ExpoClipboard:
     :path: "../node_modules/expo-clipboard/ios"
+  ExpoDocumentPicker:
+    :path: "../node_modules/expo-document-picker/ios"
   ExpoDomWebView:
     :path: "../node_modules/@expo/dom-webview/ios"
   ExpoFileSystem:
@@ -2422,6 +2430,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/expo-symbols/ios"
   FBLazyVector:
     :path: "../node_modules/react-native/Libraries/FBLazyVector"
+  FolderPicker:
+    :path: "../modules/folder-picker/ios"
   hermes-engine:
     :podspec: "../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec"
     :tag: hermes-v0.14.1
@@ -2588,6 +2598,7 @@ SPEC CHECKSUMS:
   ExpoAsset: bdc7bc21fe25d197c3aa7547e14c12c42087d9c9
   ExpoAudio: af1b3b6271e309bfc1ea4626284a47d3af49c7e1
   ExpoClipboard: 6bb321d2991652e6736d400f1d7c073aa02c41a0
+  ExpoDocumentPicker: 9d82b922be941a74ba52f82df7ba123b334fbb5a
   ExpoDomWebView: f101fb3db4b6eec4163fca51f7507189b7e48661
   ExpoFileSystem: e1a42d7f69f7faae33f4d7d01708f7861f7bd757
   ExpoFont: 1aa465cf9f8ac6b670405becba8b15473581b2dd
@@ -2606,6 +2617,7 @@ SPEC CHECKSUMS:
   ExpoSplashScreen: 6452aefb424acc76347d62482caef9b4e613e59e
   ExpoSymbols: 3d67a96643245a5d933ce7fbf535f95eb541f617
   FBLazyVector: 32e9ed0301d0fcbc1b2b341dd7fcbf291f51eb83
+  FolderPicker: 45738f74a052ae082cb4e2284bd148f1d473e4ad
   hermes-engine: 376c426fa88c1247b97c97c428ec7fb5792f9fd1
   libavif: 5f8e715bea24debec477006f21ef9e95432e254d
   libdav1d: 23581a4d8ec811ff171ed5e2e05cd27bad64c39f

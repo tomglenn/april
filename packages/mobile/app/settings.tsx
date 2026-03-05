@@ -12,11 +12,25 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native'
-import { ChevronLeft, Eye, EyeOff, Trash2 } from 'lucide-react-native'
+import { ChevronLeft, Eye, EyeOff, Trash2, FolderOpen } from 'lucide-react-native'
 import { useTheme } from '../src/theme/ThemeProvider'
 import { useSettingsStore } from '../src/stores/settings'
+import { useConversationsStore } from '../src/stores/conversations'
 import { ModelPicker } from '../src/components/ModelPicker'
+import { pickFolder } from '../src/platform/folderPicker'
+import { hasAprilData } from '../src/platform/storage'
 import type { Memory } from '@april/core'
+
+function folderDisplayName(uri: string | undefined): string {
+  if (!uri) return 'App storage'
+  try {
+    const decoded = decodeURIComponent(uri)
+    const parts = decoded.replace(/\/$/, '').split('/')
+    return parts[parts.length - 1] || uri
+  } catch {
+    return uri
+  }
+}
 
 type Personality = 'professional' | 'friendly' | 'creative' | 'concise' | 'custom'
 
@@ -92,7 +106,8 @@ function ApiKeyField({
 export default function SettingsScreen(): JSX.Element {
   const colors = useTheme()
   const navigation = useNavigation()
-  const { settings, update } = useSettingsStore()
+  const { settings, update, setDataFolderWithBookmark } = useSettingsStore()
+  const loadConversations = useConversationsStore((s) => s.load)
   const [personality, setPersonality] = useState<Personality | null>(null)
   const [initialized, setInitialized] = useState(false)
   const scrollRef = useRef<ScrollView>(null)
@@ -127,6 +142,34 @@ export default function SettingsScreen(): JSX.Element {
 
   const deleteMemory = (id: string): void => {
     handleUpdate({ memories: (settings.memories ?? []).filter((m) => m.id !== id) })
+  }
+
+  const handleChangeDataFolder = async (): Promise<void> => {
+    try {
+    const result = await pickFolder()
+    if (!result) return
+    const hasData = await hasAprilData(result.uri)
+    const apply = (): void => {
+      setDataFolderWithBookmark(result.uri, result.bookmark)
+        .then(() => loadConversations())
+        .catch((err) => Alert.alert('Error loading data', String(err?.message ?? err)))
+    }
+
+    if (hasData) {
+      Alert.alert(
+        'Existing April data found',
+        'This folder has existing April data. Loading it will replace your current conversations and settings.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Load data', style: 'destructive', onPress: apply }
+        ]
+      )
+    } else {
+      apply()
+    }
+    } catch (err: any) {
+      Alert.alert('Error', err?.message ?? String(err))
+    }
   }
 
   const handleCustomPromptFocus = (): void => {
@@ -295,6 +338,21 @@ export default function SettingsScreen(): JSX.Element {
           )}
         </View>
 
+        {/* Data */}
+        <SectionTitle label="Data" />
+        <View style={styles.section}>
+          <FieldLabel label="Data Folder" />
+          <View style={[styles.folderRow, { borderColor: colors.border, backgroundColor: colors.bg }]}>
+            <FolderOpen size={16} color={colors.muted} style={{ flexShrink: 0 }} />
+            <Text style={{ fontSize: 13, color: colors.text, flex: 1 }} numberOfLines={1}>
+              {folderDisplayName(settings.dataFolder)}
+            </Text>
+            <Pressable onPress={handleChangeDataFolder} style={[styles.changeBtn, { borderColor: colors.border }]}>
+              <Text style={{ fontSize: 13, color: colors.text }}>Change…</Text>
+            </Pressable>
+          </View>
+        </View>
+
         {/* Memories */}
         <SectionTitle label="Memories" />
         <View style={styles.section}>
@@ -408,5 +466,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 8,
     marginBottom: 8
+  },
+  folderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1
+  },
+  changeBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    flexShrink: 0
   }
 })

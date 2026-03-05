@@ -8,15 +8,19 @@ import {
   StyleSheet,
   Image,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  Alert
 } from 'react-native'
-import { Eye, EyeOff, Check } from 'lucide-react-native'
+import { Eye, EyeOff, Check, FolderOpen } from 'lucide-react-native'
 import { useSettingsStore } from '../stores/settings'
+import { useConversationsStore } from '../stores/conversations'
 import { useTheme } from '../theme/ThemeProvider'
 import { MODEL_CATALOG } from '../models'
 import type { Provider } from '@april/core'
+import { pickFolder } from '../platform/folderPicker'
+import { hasAprilData } from '../platform/storage'
 
-type Step = 1 | 2 | 3 | 4 | 5 | 'done'
+type Step = 1 | 2 | 3 | 4 | 5 | 6 | 'done'
 type Personality = 'professional' | 'friendly' | 'creative' | 'concise' | 'custom'
 
 const PERSONALITY_PROMPTS: Record<Exclude<Personality, 'custom'>, string> = {
@@ -73,11 +77,26 @@ function WizardKeyInput({
   )
 }
 
+function folderDisplayName(uri: string): string {
+  if (!uri) return 'App storage — on this device'
+  // Decode and show last path component
+  try {
+    const decoded = decodeURIComponent(uri)
+    const parts = decoded.replace(/\/$/, '').split('/')
+    return parts[parts.length - 1] || uri
+  } catch {
+    return uri
+  }
+}
+
 export function SetupWizard(): JSX.Element {
-  const { settings, update } = useSettingsStore()
+  const { settings, update, setDataFolderWithBookmark } = useSettingsStore()
+  const loadConversations = useConversationsStore((s) => s.load)
   const colors = useTheme()
 
   const [step, setStep] = useState<Step>(1)
+  const [wizardFolderUri, setWizardFolderUri] = useState('')
+  const [wizardFolderBookmark, setWizardFolderBookmark] = useState('')
   const [anthropicKey, setAnthropicKey] = useState(settings?.anthropicApiKey ?? '')
   const [openaiKey, setOpenaiKey] = useState(settings?.openaiApiKey ?? '')
   const [selectedModel, setSelectedModel] = useState('')
@@ -94,8 +113,8 @@ export function SetupWizard(): JSX.Element {
   const [personality, setPersonality] = useState<Personality>('friendly')
   const [customPrompt, setCustomPrompt] = useState(PERSONALITY_PROMPTS.friendly)
 
-  const step2Valid = !!(anthropicKey.trim() || openaiKey.trim())
-  const step3Valid = selectedModel.length > 0
+  const step3Valid = !!(anthropicKey.trim() || openaiKey.trim())
+  const step4Valid = selectedModel.length > 0
 
   const displayProvider = selectedProvider
   const displayModel = selectedModel
@@ -107,7 +126,47 @@ export function SetupWizard(): JSX.Element {
     await update({ setupCompleted: true })
   }
 
+  async function handlePickFolder(): Promise<void> {
+    try {
+    const result = await pickFolder()
+    if (!result) return
+    const hasData = await hasAprilData(result.uri)
+    if (hasData) {
+      Alert.alert(
+        'Existing April data found',
+        'This folder has existing April data. Loading it will replace your current conversations and settings.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Load data',
+            style: 'destructive',
+            onPress: () => {
+              setDataFolderWithBookmark(result.uri, result.bookmark)
+                .then(() => loadConversations())
+                .then(() => update({ setupCompleted: true }))
+                .then(() => setStep('done'))
+                .catch((err) => Alert.alert('Error', String(err?.message ?? err)))
+            }
+          }
+        ]
+      )
+    } else {
+      setWizardFolderUri(result.uri)
+      setWizardFolderBookmark(result.bookmark)
+    }
+    } catch (err: any) {
+      Alert.alert('Error', err?.message ?? String(err))
+    }
+  }
+
   async function handleStep2Continue(): Promise<void> {
+    if (wizardFolderUri && wizardFolderBookmark) {
+      await setDataFolderWithBookmark(wizardFolderUri, wizardFolderBookmark)
+    }
+    setStep(3)
+  }
+
+  async function handleStep3Continue(): Promise<void> {
     const partial: Partial<typeof settings & object> = {}
     if (anthropicKey.trim()) partial.anthropicApiKey = anthropicKey.trim()
     if (openaiKey.trim()) partial.openaiApiKey = openaiKey.trim()
@@ -117,17 +176,17 @@ export function SetupWizard(): JSX.Element {
     const initialModel = providerModels[firstProvider] || MODEL_CATALOG.find((m) => m.provider === firstProvider)?.model || ''
     setSelectedModel(initialModel)
     setSelectedProvider(firstProvider)
-    setStep(3)
-  }
-
-  async function handleStep3Continue(): Promise<void> {
-    await update({ defaultProvider: displayProvider, defaultModel: displayModel })
     setStep(4)
   }
 
   async function handleStep4Continue(): Promise<void> {
-    await update({ userName: userName.trim(), userLocation: userLocation.trim(), userBio: userBio.trim() })
+    await update({ defaultProvider: displayProvider, defaultModel: displayModel })
     setStep(5)
+  }
+
+  async function handleStep5Continue(): Promise<void> {
+    await update({ userName: userName.trim(), userLocation: userLocation.trim(), userBio: userBio.trim() })
+    setStep(6)
   }
 
   async function handleFinish(): Promise<void> {
@@ -146,7 +205,7 @@ export function SetupWizard(): JSX.Element {
           {/* Progress bar */}
           {step !== 1 && step !== 'done' && (
             <View style={{ height: 4, backgroundColor: colors.border }}>
-              <View style={{ height: '100%', backgroundColor: colors.accent, width: `${((Number(step) - 1) / 4) * 100}%` }} />
+              <View style={{ height: '100%', backgroundColor: colors.accent, width: `${((Number(step) - 1) / 5) * 100}%` }} />
             </View>
           )}
 
@@ -155,7 +214,7 @@ export function SetupWizard(): JSX.Element {
             {step !== 'done' && (
               <View style={styles.headerRow}>
                 {typeof step === 'number' && (
-                  <Text style={{ fontSize: 12, color: colors.muted }}>Step {step} of 5</Text>
+                  <Text style={{ fontSize: 12, color: colors.muted }}>Step {step} of 6</Text>
                 )}
                 <Pressable onPress={skipSetup}>
                   <Text style={{ fontSize: 13, color: colors.muted }}>Skip setup</Text>
@@ -176,8 +235,37 @@ export function SetupWizard(): JSX.Element {
               </View>
             )}
 
-            {/* Step 2: Providers */}
+            {/* Step 2: Data Folder */}
             {step === 2 && (
+              <View style={styles.column}>
+                <Text style={[styles.heading, { color: colors.text }]}>Choose a data folder</Text>
+                <Text style={{ fontSize: 14, color: colors.muted, marginBottom: 16 }}>
+                  Conversations and settings are saved here. Use an iCloud Drive folder to sync across devices.
+                </Text>
+
+                <View style={[styles.folderRow, { borderColor: colors.border, backgroundColor: colors.bg }]}>
+                  <FolderOpen size={16} color={colors.muted} style={{ flexShrink: 0 }} />
+                  <Text style={{ fontSize: 13, color: colors.text, flex: 1 }} numberOfLines={1}>
+                    {folderDisplayName(wizardFolderUri)}
+                  </Text>
+                  <Pressable onPress={handlePickFolder} style={[styles.outlineBtn, { borderColor: colors.border }]}>
+                    <Text style={{ fontSize: 13, color: colors.text }}>Choose…</Text>
+                  </Pressable>
+                </View>
+
+                <View style={styles.navRow}>
+                  <Pressable onPress={() => setStep(1)}>
+                    <Text style={{ color: colors.muted }}>Back</Text>
+                  </Pressable>
+                  <Pressable style={[styles.primaryBtn, { backgroundColor: colors.accent }]} onPress={handleStep2Continue}>
+                    <Text style={styles.primaryBtnText}>Continue</Text>
+                  </Pressable>
+                </View>
+              </View>
+            )}
+
+            {/* Step 3: Providers */}
+            {step === 3 && (
               <View style={styles.column}>
                 <Text style={[styles.heading, { color: colors.text }]}>Connect your providers</Text>
                 <Text style={{ fontSize: 14, color: colors.muted, marginBottom: 16 }}>
@@ -191,13 +279,13 @@ export function SetupWizard(): JSX.Element {
                 <WizardKeyInput value={openaiKey} onChange={setOpenaiKey} placeholder="sk-..." colors={colors} />
 
                 <View style={styles.navRow}>
-                  <Pressable onPress={() => setStep(1)}>
+                  <Pressable onPress={() => setStep(2)}>
                     <Text style={{ color: colors.muted }}>Back</Text>
                   </Pressable>
                   <Pressable
-                    style={[styles.primaryBtn, { backgroundColor: colors.accent, opacity: step2Valid ? 1 : 0.5 }]}
-                    disabled={!step2Valid}
-                    onPress={handleStep2Continue}
+                    style={[styles.primaryBtn, { backgroundColor: colors.accent, opacity: step3Valid ? 1 : 0.5 }]}
+                    disabled={!step3Valid}
+                    onPress={handleStep3Continue}
                   >
                     <Text style={styles.primaryBtnText}>Continue</Text>
                   </Pressable>
@@ -205,8 +293,8 @@ export function SetupWizard(): JSX.Element {
               </View>
             )}
 
-            {/* Step 3: Model */}
-            {step === 3 && (
+            {/* Step 4: Model */}
+            {step === 4 && (
               <View style={styles.column}>
                 <Text style={[styles.heading, { color: colors.text }]}>Choose your default model</Text>
                 <Text style={{ fontSize: 14, color: colors.muted, marginBottom: 16 }}>
@@ -260,13 +348,13 @@ export function SetupWizard(): JSX.Element {
                 ))}
 
                 <View style={styles.navRow}>
-                  <Pressable onPress={() => setStep(2)}>
+                  <Pressable onPress={() => setStep(3)}>
                     <Text style={{ color: colors.muted }}>Back</Text>
                   </Pressable>
                   <Pressable
-                    style={[styles.primaryBtn, { backgroundColor: colors.accent, opacity: step3Valid ? 1 : 0.5 }]}
-                    disabled={!step3Valid}
-                    onPress={handleStep3Continue}
+                    style={[styles.primaryBtn, { backgroundColor: colors.accent, opacity: step4Valid ? 1 : 0.5 }]}
+                    disabled={!step4Valid}
+                    onPress={handleStep4Continue}
                   >
                     <Text style={styles.primaryBtnText}>Continue</Text>
                   </Pressable>
@@ -274,8 +362,8 @@ export function SetupWizard(): JSX.Element {
               </View>
             )}
 
-            {/* Step 4: About You */}
-            {step === 4 && (
+            {/* Step 5: About You */}
+            {step === 5 && (
               <View style={styles.column}>
                 <Text style={[styles.heading, { color: colors.text }]}>A little about you</Text>
                 <Text style={{ fontSize: 14, color: colors.muted, marginBottom: 16 }}>
@@ -312,18 +400,18 @@ export function SetupWizard(): JSX.Element {
                 />
 
                 <View style={styles.navRow}>
-                  <Pressable onPress={() => setStep(3)}>
+                  <Pressable onPress={() => setStep(4)}>
                     <Text style={{ color: colors.muted }}>Back</Text>
                   </Pressable>
-                  <Pressable style={[styles.primaryBtn, { backgroundColor: colors.accent }]} onPress={handleStep4Continue}>
+                  <Pressable style={[styles.primaryBtn, { backgroundColor: colors.accent }]} onPress={handleStep5Continue}>
                     <Text style={styles.primaryBtnText}>Continue</Text>
                   </Pressable>
                 </View>
               </View>
             )}
 
-            {/* Step 5: Personality */}
-            {step === 5 && (
+            {/* Step 6: Personality */}
+            {step === 6 && (
               <View style={styles.column}>
                 <Text style={[styles.heading, { color: colors.text }]}>How should April communicate?</Text>
                 <Text style={{ fontSize: 14, color: colors.muted, marginBottom: 16 }}>
@@ -360,7 +448,7 @@ export function SetupWizard(): JSX.Element {
                 )}
 
                 <View style={styles.navRow}>
-                  <Pressable onPress={() => setStep(4)}>
+                  <Pressable onPress={() => setStep(5)}>
                     <Text style={{ color: colors.muted }}>Back</Text>
                   </Pressable>
                   <Pressable style={[styles.primaryBtn, { backgroundColor: colors.accent }]} onPress={handleFinish}>
@@ -376,7 +464,7 @@ export function SetupWizard(): JSX.Element {
                 <Check size={48} color={colors.accent} />
                 <Text style={[styles.title, { color: colors.text }]}>You're all set!</Text>
                 <Text style={{ fontSize: 14, color: colors.muted, textAlign: 'center' }}>
-                  April is ready. {providerLabel(displayProvider)} · {displayModel}
+                  April is ready. {displayModel ? `${providerLabel(displayProvider)} · ${displayModel}` : 'Data loaded from existing folder.'}
                 </Text>
               </View>
             )}
@@ -454,11 +542,26 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textAlign: 'center'
   },
+  outlineBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1
+  },
   navRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: 20
+  },
+  folderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 4
   },
   tab: {
     paddingHorizontal: 14,
