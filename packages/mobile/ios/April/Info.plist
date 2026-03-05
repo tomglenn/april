@@ -51,5 +51,9 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>April needs access to your microphone for voice input.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>April needs access to your photos to attach images to messages.</string>
 </dict>
 </plist>

@@ -16,7 +16,6 @@ import { useConversationsStore } from '../stores/conversations'
 import { useSettingsStore } from '../stores/settings'
 import { useTheme } from '../theme/ThemeProvider'
 import { useChat } from '../hooks/useChat'
-import { useVoice } from '../hooks/useVoice'
 import { Message } from './Message'
 import { InputBar } from './InputBar'
 import { MODEL_CATALOG } from '../models'
@@ -44,11 +43,6 @@ export function ConversationView(): JSX.Element {
   const isActiveStreaming = !!activeStream
   const flatListRef = useRef<FlatList>(null)
 
-  const {
-    isRecording, isTranscribing, recordingSeconds,
-    startRecording, stopRecording, speak, stopSpeaking, isSpeaking
-  } = useVoice()
-
   const activeConv = conversations.find((c) => c.id === activeId)
   const effectiveModel = activeConv?.model ?? settings?.defaultModel ?? ''
   const effectiveProvider = activeConv?.provider ?? settings?.defaultProvider ?? 'anthropic'
@@ -57,8 +51,6 @@ export function ConversationView(): JSX.Element {
     settings !== null &&
     ((effectiveProvider === 'anthropic' && !settings.anthropicApiKey) ||
       (effectiveProvider === 'openai' && !settings.openaiApiKey))
-
-  const hasOpenAIKey = !!settings?.openaiApiKey
 
   const suggestions = useMemo(() => {
     const shuffled = [...SUGGESTIONS].sort(() => Math.random() - 0.5)
@@ -72,20 +64,6 @@ export function ConversationView(): JSX.Element {
     }
   }, [activeConv?.messages.length, activeStream])
 
-  // Auto-play TTS
-  useEffect(() => {
-    if (!settings?.voiceAutoPlay || !hasOpenAIKey) return
-    if (!activeConv || isActiveStreaming) return
-    const lastMsg = activeConv.messages[activeConv.messages.length - 1]
-    if (lastMsg?.role === 'assistant' && lastMsg.blocks.length > 0) {
-      const text = lastMsg.blocks
-        .filter((b) => b.type === 'text')
-        .map((b) => (b as { type: 'text'; text: string }).text)
-        .join('\n')
-      if (text) speak(text)
-    }
-  }, [activeConv?.messages.length, isActiveStreaming])
-
   const handleSend = useCallback((text: string, images?: ImageAttachment[]) => {
     if (!effectiveModel || missingKey) return
     sendMessage(text, effectiveModel, effectiveProvider, images)
@@ -95,16 +73,6 @@ export function ConversationView(): JSX.Element {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
     handleSend(s)
   }, [handleSend])
-
-  const handleMicPress = useCallback(async () => {
-    if (isRecording) {
-      const text = await stopRecording()
-      if (text) handleSend(text)
-    } else {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
-      startRecording()
-    }
-  }, [isRecording, stopRecording, startRecording, handleSend])
 
   const openDrawer = useCallback(() => {
     navigation.dispatch(DrawerActions.openDrawer())
@@ -194,11 +162,6 @@ export function ConversationView(): JSX.Element {
           model={effectiveModel}
           provider={effectiveProvider}
           missingKey={!!missingKey}
-          hasOpenAIKey={hasOpenAIKey}
-          isRecording={isRecording}
-          isTranscribing={isTranscribing}
-          recordingSeconds={recordingSeconds}
-          onMicPress={handleMicPress}
         />
         <View style={{ height: insets.bottom }} />
       </KeyboardAvoidingView>

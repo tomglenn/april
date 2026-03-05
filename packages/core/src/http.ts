@@ -132,66 +132,183 @@ export function createSDKOpenAICaller(apiKey: string, baseURL?: string): OpenAIC
 }
 
 // ── Fetch-based implementations (for mobile — no SDK dependency) ────────────
-// React Native's XHR corrupts multi-byte UTF-8 (emojis) during incremental reads.
-// We use non-streaming fetch + synthesized events. Response appears after generation
-// completes but all characters render correctly. Can restore true streaming later
-// with a native module or polyfill.
+// Uses XHR with SSE parsing for true streaming on React Native.
+// Only processes complete SSE lines to avoid UTF-8 corruption at byte boundaries.
 
-/** Synthesize Anthropic stream events from a complete API response */
-function synthesizeAnthropicEvents(response: {
-  content: Array<{ type: string; text?: string; id?: string; name?: string; input?: unknown }>
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  [key: string]: any
-}): AnthropicStreamEvent[] {
-  const events: AnthropicStreamEvent[] = []
-  events.push({ type: 'message_start' } as AnthropicStreamEvent)
+/** Parse SSE lines from a text buffer. Returns [parsed events, remaining buffer]. */
+function parseSSEBuffer(buffer: string): [Array<Record<string, unknown>>, string] {
+  const events: Array<Record<string, unknown>> = []
+  const blocks = buffer.split('\n\n')
+  // Last element may be incomplete — keep it as remainder
+  const remainder = blocks.pop() ?? ''
 
-  for (let i = 0; i < response.content.length; i++) {
-    const block = response.content[i]
-    events.push({
-      type: 'content_block_start',
-      content_block: { type: block.type, id: block.id, name: block.name }
-    })
+  for (const block of blocks) {
+    const lines = block.split('\n')
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const data = line.slice(6)
+        if (data === '[DONE]') continue
+        try {
+          events.push(JSON.parse(data))
+        } catch { /* skip malformed */ }
+      }
+    }
+  }
 
-    if (block.type === 'text' && block.text) {
-      events.push({
-        type: 'content_block_delta',
-        delta: { type: 'text_delta', text: block.text }
-      })
-    } else if (block.type === 'tool_use' && block.input) {
-      events.push({
-        type: 'content_block_delta',
-        delta: { type: 'input_json_delta', partial_json: JSON.stringify(block.input) }
+  return [events, remainder]
+}
+
+/**
+ * XHR-based SSE stream. Works in React Native where fetch lacks ReadableStream.
+ * Returns an async iterable of parsed SSE events plus a promise for completion.
+ */
+function xhrSSEStream<T>(
+  url: string,
+  headers: Record<string, string>,
+  body: string,
+  signal?: AbortSignal
+): { events: AsyncIterable<T>; done: Promise<void> } {
+  const eventQueue: T[] = []
+  type Resolver = (value: IteratorResult<T>) => void
+  let waiting: Resolver | null = null
+  let finished = false
+  let error: Error | null = null
+
+  const donePromise = new Promise<void>((resolveDone, rejectDone) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', url, true)
+    for (const [k, v] of Object.entries(headers)) {
+      xhr.setRequestHeader(k, v)
+    }
+    xhr.responseType = 'text'
+
+    let processedIndex = 0
+    let sseBuffer = ''
+
+    const pushEvent = (ev: T): void => {
+      if (waiting) {
+        const r = waiting
+        waiting = null
+        r({ value: ev, done: false })
+      } else {
+        eventQueue.push(ev)
+      }
+    }
+
+    xhr.onprogress = () => {
+      const newText = xhr.responseText.slice(processedIndex)
+      processedIndex = xhr.responseText.length
+      sseBuffer += newText
+
+      const [parsed, remainder] = parseSSEBuffer(sseBuffer)
+      sseBuffer = remainder
+
+      for (const ev of parsed) {
+        pushEvent(ev as T)
+      }
+    }
+
+    xhr.onload = () => {
+      // Process any remaining buffer
+      if (sseBuffer.trim()) {
+        const [parsed] = parseSSEBuffer(sseBuffer + '\n\n')
+        for (const ev of parsed) {
+          pushEvent(ev as T)
+        }
+      }
+
+      if (xhr.status >= 400) {
+        // Try to extract error from non-SSE response
+        error = new Error(`API error ${xhr.status}: ${xhr.responseText.slice(0, 500)}`)
+        finished = true
+        if (waiting) {
+          const r = waiting
+          waiting = null
+          r({ value: undefined as unknown as T, done: true })
+        }
+        rejectDone(error)
+        return
+      }
+
+      finished = true
+      if (waiting) {
+        const r = waiting
+        waiting = null
+        r({ value: undefined as unknown as T, done: true })
+      }
+      resolveDone()
+    }
+
+    xhr.onerror = () => {
+      error = new Error('Network error')
+      finished = true
+      if (waiting) {
+        const r = waiting
+        waiting = null
+        r({ value: undefined as unknown as T, done: true })
+      }
+      rejectDone(error)
+    }
+
+    xhr.ontimeout = () => {
+      error = new Error('Request timeout')
+      finished = true
+      if (waiting) {
+        const r = waiting
+        waiting = null
+        r({ value: undefined as unknown as T, done: true })
+      }
+      rejectDone(error)
+    }
+
+    if (signal) {
+      signal.addEventListener('abort', () => {
+        xhr.abort()
+        error = new Error('AbortError')
+        ;(error as Error & { name: string }).name = 'AbortError'
+        finished = true
+        if (waiting) {
+          const r = waiting
+          waiting = null
+          r({ value: undefined as unknown as T, done: true })
+        }
+        rejectDone(error)
       })
     }
 
-    events.push({ type: 'content_block_stop' })
+    xhr.send(body)
+  })
+
+  const events: AsyncIterable<T> = {
+    [Symbol.asyncIterator]() {
+      return {
+        async next(): Promise<IteratorResult<T>> {
+          if (eventQueue.length > 0) {
+            return { value: eventQueue.shift()!, done: false }
+          }
+          if (finished) {
+            if (error) throw error
+            return { value: undefined as unknown as T, done: true }
+          }
+          return new Promise<IteratorResult<T>>((resolve) => {
+            waiting = resolve
+          })
+        }
+      }
+    }
   }
 
-  events.push({
-    type: 'message_delta',
-    delta: { stop_reason: response.stop_reason ?? 'end_turn' }
-  } as AnthropicStreamEvent)
-
-  return events
+  return { events, done: donePromise }
 }
 
 export function createFetchAnthropicCaller(apiKey: string): AnthropicCaller {
   return {
     streamMessage(params: AnthropicStreamParams, signal?: AbortSignal) {
-      const eventQueue: AnthropicStreamEvent[] = []
-      type StreamResolver = (value: IteratorResult<AnthropicStreamEvent>) => void
-      let resolveStream: StreamResolver | null = null
-      let streamDone = false
-      let streamError: Error | null = null
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let fullResponse: any = null
-
       const body: Record<string, unknown> = {
         model: params.model,
         max_tokens: params.max_tokens,
-        messages: params.messages
-        // Note: NOT setting stream: true — we get the complete response
+        messages: params.messages,
+        stream: true
       }
       if (params.system) body.system = params.system
       if (params.tools && params.tools.length > 0) body.tools = params.tools
@@ -206,75 +323,64 @@ export function createFetchAnthropicCaller(apiKey: string): AnthropicCaller {
         headers['anthropic-beta'] = params.betas.join(',')
       }
 
-      const fetchPromise = (async () => {
-        try {
-          const response = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(body),
-            signal
-          })
+      const { events, done } = xhrSSEStream<AnthropicStreamEvent>(
+        'https://api.anthropic.com/v1/messages',
+        headers,
+        JSON.stringify(body),
+        signal
+      )
 
-          if (!response.ok) {
-            const text = await response.text()
-            throw new Error(`Anthropic API error ${response.status}: ${text}`)
-          }
+      // Collect content blocks for finalMessage()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const contentBlocks: any[] = []
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let currentBlock: any = null
+      let stopReason = 'end_turn'
 
-          fullResponse = await response.json()
-          console.log('[api] Anthropic response received:', fullResponse.content?.length, 'content blocks, stop_reason:', fullResponse.stop_reason)
-          const events = synthesizeAnthropicEvents(fullResponse)
-
-          for (const event of events) {
-            eventQueue.push(event)
-            if (resolveStream) {
-              const r = resolveStream
-              resolveStream = null
-              r({ value: eventQueue.shift()!, done: false })
-            }
-          }
-
-          streamDone = true
-          if (resolveStream) {
-            const r = resolveStream
-            resolveStream = null
-            if (eventQueue.length > 0) {
-              r({ value: eventQueue.shift()!, done: false })
-            } else {
-              r({ value: undefined as unknown as AnthropicStreamEvent, done: true })
-            }
-          }
-        } catch (err) {
-          streamDone = true
-          streamError = err instanceof Error ? err : new Error(String(err))
-          if (resolveStream) {
-            const r = resolveStream
-            resolveStream = null
-            r({ value: undefined as unknown as AnthropicStreamEvent, done: true })
-          }
-          throw err
-        }
-      })()
-
-      return {
+      // Wrap the event iterator to also collect content for finalMessage
+      const wrappedEvents: AsyncIterable<AnthropicStreamEvent> = {
         [Symbol.asyncIterator]() {
+          const inner = events[Symbol.asyncIterator]()
           return {
             async next(): Promise<IteratorResult<AnthropicStreamEvent>> {
-              if (eventQueue.length > 0) {
-                return { value: eventQueue.shift()!, done: false }
+              const result = await inner.next()
+              if (!result.done) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const ev = result.value as any
+                if (ev.type === 'content_block_start') {
+                  currentBlock = { ...ev.content_block }
+                  if (currentBlock.type === 'text') currentBlock.text = ''
+                  if (currentBlock.type === 'tool_use') currentBlock.input = ''
+                  if (currentBlock.type === 'thinking') currentBlock.thinking = ''
+                } else if (ev.type === 'content_block_delta') {
+                  if (currentBlock) {
+                    if (ev.delta?.type === 'text_delta') currentBlock.text = (currentBlock.text ?? '') + (ev.delta.text ?? '')
+                    if (ev.delta?.type === 'thinking_delta') currentBlock.thinking = (currentBlock.thinking ?? '') + (ev.delta.thinking ?? '')
+                    if (ev.delta?.type === 'input_json_delta') currentBlock.input = (currentBlock.input ?? '') + (ev.delta.partial_json ?? '')
+                  }
+                } else if (ev.type === 'content_block_stop') {
+                  if (currentBlock) {
+                    if (currentBlock.type === 'tool_use' && typeof currentBlock.input === 'string') {
+                      try { currentBlock.input = JSON.parse(currentBlock.input) } catch { currentBlock.input = {} }
+                    }
+                    contentBlocks.push(currentBlock)
+                    currentBlock = null
+                  }
+                } else if (ev.type === 'message_delta') {
+                  stopReason = ev.delta?.stop_reason ?? stopReason
+                }
               }
-              if (streamDone) {
-                if (streamError) throw streamError
-                return { value: undefined as unknown as AnthropicStreamEvent, done: true }
-              }
-              return new Promise<IteratorResult<AnthropicStreamEvent>>((resolve) => {
-                resolveStream = resolve
-              })
+              return result
             }
           }
-        },
+        }
+      }
+
+      return {
+        [Symbol.asyncIterator]() { return wrappedEvents[Symbol.asyncIterator]() },
         async finalMessage(): Promise<{ content: unknown[] }> {
-          await fetchPromise
-          return { content: fullResponse?.content ?? [] }
+          await done.catch(() => {})
+          return { content: contentBlocks, stop_reason: stopReason } as { content: unknown[] }
         }
       }
     },
@@ -309,65 +415,16 @@ export function createFetchOpenAICaller(apiKey: string, baseURL?: string): OpenA
 
   return {
     async streamChat(params: OpenAIStreamParams, signal?: AbortSignal): Promise<AsyncIterable<OpenAIStreamChunk>> {
-      // Non-streaming: call without stream flag, synthesize a single chunk
-      const { stream: _, ...nonStreamParams } = params
-      const response = await fetch(`${base}/v1/chat/completions`, {
-        method: 'POST',
-        headers: {
+      const { events } = xhrSSEStream<OpenAIStreamChunk>(
+        `${base}/v1/chat/completions`,
+        {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`
         },
-        body: JSON.stringify(nonStreamParams),
+        JSON.stringify(params),
         signal
-      })
-
-      if (!response.ok) {
-        const text = await response.text()
-        throw new Error(`OpenAI API error ${response.status}: ${text}`)
-      }
-
-      const data = await response.json()
-      const choice = data.choices?.[0]
-      const chunks: OpenAIStreamChunk[] = []
-
-      if (choice?.message?.content) {
-        chunks.push({
-          choices: [{ delta: { content: choice.message.content }, finish_reason: null }]
-        })
-      }
-      if (choice?.message?.tool_calls) {
-        for (const tc of choice.message.tool_calls) {
-          chunks.push({
-            choices: [{
-              delta: {
-                tool_calls: [{
-                  index: tc.index ?? 0,
-                  id: tc.id,
-                  function: { name: tc.function?.name, arguments: tc.function?.arguments }
-                }]
-              },
-              finish_reason: null
-            }]
-          })
-        }
-      }
-      chunks.push({
-        choices: [{ delta: {}, finish_reason: choice?.finish_reason ?? 'stop' }]
-      })
-
-      let idx = 0
-      return {
-        [Symbol.asyncIterator]() {
-          return {
-            async next(): Promise<IteratorResult<OpenAIStreamChunk>> {
-              if (idx < chunks.length) {
-                return { value: chunks[idx++], done: false }
-              }
-              return { value: undefined as unknown as OpenAIStreamChunk, done: true }
-            }
-          }
-        }
-      }
+      )
+      return events
     },
 
     async createChat(params: OpenAICreateParams): Promise<OpenAICreateResponse> {

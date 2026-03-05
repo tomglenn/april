@@ -1,7 +1,6 @@
 import React, { useState, useRef, useCallback } from 'react'
 import {
   View,
-  Text,
   TextInput,
   Pressable,
   Image,
@@ -9,7 +8,7 @@ import {
   NativeSyntheticEvent,
   TextInputContentSizeChangeEventData
 } from 'react-native'
-import { Send, Square, AlertCircle, Paperclip, Mic, X, Loader } from 'lucide-react-native'
+import { Send, Square, AlertCircle, Paperclip, X } from 'lucide-react-native'
 import * as ImagePicker from 'expo-image-picker'
 import * as Haptics from 'expo-haptics'
 import { useTheme } from '../theme/ThemeProvider'
@@ -29,16 +28,10 @@ interface Props {
   model: string
   provider: string
   missingKey?: boolean
-  hasOpenAIKey?: boolean
-  isRecording?: boolean
-  isTranscribing?: boolean
-  recordingSeconds?: number
-  onMicPress?: () => void
 }
 
 export function InputBar({
-  onSend, onStop, isStreaming, model, missingKey,
-  hasOpenAIKey, isRecording, isTranscribing, recordingSeconds, onMicPress
+  onSend, onStop, isStreaming, model, missingKey
 }: Props): JSX.Element {
   const colors = useTheme()
   const [text, setText] = useState('')
@@ -124,14 +117,6 @@ export function InputBar({
 
   return (
     <View style={[styles.container, { borderTopColor: colors.border, backgroundColor: colors.surface }]}>
-      {/* Recording indicator */}
-      {isRecording && (
-        <View style={styles.recordingRow}>
-          <View style={[styles.recordDot, { backgroundColor: '#ef4444' }]} />
-          <Text style={{ color: '#ef4444', fontSize: 12 }}>{recordingSeconds ?? 0}s Recording...</Text>
-        </View>
-      )}
-
       {/* Image preview strip */}
       {images.length > 0 && (
         <View style={styles.imageStrip}>
@@ -171,21 +156,6 @@ export function InputBar({
             <Paperclip size={14} color={colors.muted} />
           </Pressable>
 
-          {/* Voice button */}
-          {hasOpenAIKey && !isStreaming && onMicPress && (
-            <Pressable
-              onPress={onMicPress}
-              disabled={isTranscribing}
-              style={[styles.iconBtn, { opacity: isTranscribing ? 0.4 : 1 }]}
-            >
-              {isTranscribing ? (
-                <Loader size={14} color={colors.muted} />
-              ) : (
-                <Mic size={14} color={isRecording ? '#ef4444' : colors.muted} />
-              )}
-            </Pressable>
-          )}
-
           {/* Send / Stop */}
           {isStreaming ? (
             <Pressable onPress={onStop} style={[styles.btn, { backgroundColor: colors.surface }]}>
@@ -218,18 +188,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderTopWidth: 1
-  },
-  recordingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 4,
-    paddingBottom: 6
-  },
-  recordDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4
   },
   imageStrip: {
     flexDirection: 'row',
