@@ -21,6 +21,7 @@ import { StatusBar } from 'expo-status-bar'
 import { initializePlatform } from '../src/platform'
 import { useSettingsStore } from '../src/stores/settings'
 import { useConversationsStore } from '../src/stores/conversations'
+import { streamingRegistry } from '../src/stores/streamingRegistry'
 import { ThemeProvider, useTheme } from '../src/theme/ThemeProvider'
 import { SetupWizard } from '../src/components/SetupWizard'
 import { DrawerContent } from '../src/components/DrawerContent'
@@ -48,7 +49,9 @@ function AppContent(): JSX.Element {
     const POLL_MS = 15_000
     let timer: ReturnType<typeof setInterval> | null = null
 
-    const poll = (): void => { reloadSettings(); loadConversations() }
+    // Skip reloading conversations while a stream is active — the in-progress
+    // placeholder message hasn't been persisted yet, so a reload would wipe it.
+    const poll = (): void => { reloadSettings(); if (!streamingRegistry.isActive()) loadConversations() }
 
     const startPolling = (): void => {
       if (timer) return

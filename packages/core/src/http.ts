@@ -132,7 +132,9 @@ export function createSDKOpenAICaller(apiKey: string, baseURL?: string): OpenAIC
 }
 
 // ── Fetch-based implementations (for mobile — no SDK dependency) ────────────
-// Uses XHR with SSE parsing for true streaming on React Native.
+// Uses fetch() + ReadableStream for true incremental SSE streaming on React Native.
+// React Native 0.72+ supports response.body.getReader(), which delivers chunks as they
+// arrive from the network — unlike XHR onprogress which iOS can buffer on cellular.
 // Only processes complete SSE lines to avoid UTF-8 corruption at byte boundaries.
 
 /** Parse SSE lines from a text buffer. Returns [parsed events, remaining buffer]. */
@@ -159,146 +161,51 @@ function parseSSEBuffer(buffer: string): [Array<Record<string, unknown>>, string
 }
 
 /**
- * XHR-based SSE stream. Works in React Native where fetch lacks ReadableStream.
- * Returns an async iterable of parsed SSE events plus a promise for completion.
+ * Fetch-based SSE stream using ReadableStream for incremental delivery.
+ * Falls back to full-response parsing if response.body is unavailable.
  */
-function xhrSSEStream<T>(
+async function* fetchSSEStream<T>(
   url: string,
   headers: Record<string, string>,
   body: string,
   signal?: AbortSignal
-): { events: AsyncIterable<T>; done: Promise<void> } {
-  const eventQueue: T[] = []
-  type Resolver = (value: IteratorResult<T>) => void
-  let waiting: Resolver | null = null
-  let finished = false
-  let error: Error | null = null
+): AsyncGenerator<T> {
+  const response = await fetch(url, { method: 'POST', headers, body, signal })
 
-  const donePromise = new Promise<void>((resolveDone, rejectDone) => {
-    const xhr = new XMLHttpRequest()
-    xhr.open('POST', url, true)
-    for (const [k, v] of Object.entries(headers)) {
-      xhr.setRequestHeader(k, v)
-    }
-    xhr.responseType = 'text'
-
-    let processedIndex = 0
-    let sseBuffer = ''
-
-    const pushEvent = (ev: T): void => {
-      if (waiting) {
-        const r = waiting
-        waiting = null
-        r({ value: ev, done: false })
-      } else {
-        eventQueue.push(ev)
-      }
-    }
-
-    xhr.onprogress = () => {
-      const newText = xhr.responseText.slice(processedIndex)
-      processedIndex = xhr.responseText.length
-      sseBuffer += newText
-
-      const [parsed, remainder] = parseSSEBuffer(sseBuffer)
-      sseBuffer = remainder
-
-      for (const ev of parsed) {
-        pushEvent(ev as T)
-      }
-    }
-
-    xhr.onload = () => {
-      // Process any remaining buffer
-      if (sseBuffer.trim()) {
-        const [parsed] = parseSSEBuffer(sseBuffer + '\n\n')
-        for (const ev of parsed) {
-          pushEvent(ev as T)
-        }
-      }
-
-      if (xhr.status >= 400) {
-        // Try to extract error from non-SSE response
-        error = new Error(`API error ${xhr.status}: ${xhr.responseText.slice(0, 500)}`)
-        finished = true
-        if (waiting) {
-          const r = waiting
-          waiting = null
-          r({ value: undefined as unknown as T, done: true })
-        }
-        rejectDone(error)
-        return
-      }
-
-      finished = true
-      if (waiting) {
-        const r = waiting
-        waiting = null
-        r({ value: undefined as unknown as T, done: true })
-      }
-      resolveDone()
-    }
-
-    xhr.onerror = () => {
-      error = new Error('Network error')
-      finished = true
-      if (waiting) {
-        const r = waiting
-        waiting = null
-        r({ value: undefined as unknown as T, done: true })
-      }
-      rejectDone(error)
-    }
-
-    xhr.ontimeout = () => {
-      error = new Error('Request timeout')
-      finished = true
-      if (waiting) {
-        const r = waiting
-        waiting = null
-        r({ value: undefined as unknown as T, done: true })
-      }
-      rejectDone(error)
-    }
-
-    if (signal) {
-      signal.addEventListener('abort', () => {
-        xhr.abort()
-        error = new Error('AbortError')
-        ;(error as Error & { name: string }).name = 'AbortError'
-        finished = true
-        if (waiting) {
-          const r = waiting
-          waiting = null
-          r({ value: undefined as unknown as T, done: true })
-        }
-        rejectDone(error)
-      })
-    }
-
-    xhr.send(body)
-  })
-
-  const events: AsyncIterable<T> = {
-    [Symbol.asyncIterator]() {
-      return {
-        async next(): Promise<IteratorResult<T>> {
-          if (eventQueue.length > 0) {
-            return { value: eventQueue.shift()!, done: false }
-          }
-          if (finished) {
-            if (error) throw error
-            return { value: undefined as unknown as T, done: true }
-          }
-          return new Promise<IteratorResult<T>>((resolve) => {
-            waiting = resolve
-          })
-        }
-      }
-    }
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(`API error ${response.status}: ${text.slice(0, 500)}`)
   }
 
-  return { events, done: donePromise }
+  if (!response.body) {
+    // Fallback for environments without ReadableStream
+    const text = await response.text()
+    const [parsed] = parseSSEBuffer(text + '\n\n')
+    for (const ev of parsed) yield ev as T
+    return
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let sseBuffer = ''
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      sseBuffer += decoder.decode(value, { stream: true })
+      const [parsed, remainder] = parseSSEBuffer(sseBuffer)
+      sseBuffer = remainder
+      for (const ev of parsed) yield ev as T
+    }
+    // Flush any trailing partial line
+    if (sseBuffer.trim()) {
+      const [parsed] = parseSSEBuffer(sseBuffer + '\n\n')
+      for (const ev of parsed) yield ev as T
+    }
+  } finally {
+    reader.releaseLock()
+  }
 }
 
 export function createFetchAnthropicCaller(apiKey: string): AnthropicCaller {
@@ -323,63 +230,55 @@ export function createFetchAnthropicCaller(apiKey: string): AnthropicCaller {
         headers['anthropic-beta'] = params.betas.join(',')
       }
 
-      const { events, done } = xhrSSEStream<AnthropicStreamEvent>(
-        'https://api.anthropic.com/v1/messages',
-        headers,
-        JSON.stringify(body),
-        signal
-      )
-
-      // Collect content blocks for finalMessage()
+      // Collect content blocks for finalMessage() as events flow through
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const contentBlocks: any[] = []
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let currentBlock: any = null
       let stopReason = 'end_turn'
 
-      // Wrap the event iterator to also collect content for finalMessage
-      const wrappedEvents: AsyncIterable<AnthropicStreamEvent> = {
-        [Symbol.asyncIterator]() {
-          const inner = events[Symbol.asyncIterator]()
-          return {
-            async next(): Promise<IteratorResult<AnthropicStreamEvent>> {
-              const result = await inner.next()
-              if (!result.done) {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const ev = result.value as any
-                if (ev.type === 'content_block_start') {
-                  currentBlock = { ...ev.content_block }
-                  if (currentBlock.type === 'text') currentBlock.text = ''
-                  if (currentBlock.type === 'tool_use') currentBlock.input = ''
-                  if (currentBlock.type === 'thinking') currentBlock.thinking = ''
-                } else if (ev.type === 'content_block_delta') {
-                  if (currentBlock) {
-                    if (ev.delta?.type === 'text_delta') currentBlock.text = (currentBlock.text ?? '') + (ev.delta.text ?? '')
-                    if (ev.delta?.type === 'thinking_delta') currentBlock.thinking = (currentBlock.thinking ?? '') + (ev.delta.thinking ?? '')
-                    if (ev.delta?.type === 'input_json_delta') currentBlock.input = (currentBlock.input ?? '') + (ev.delta.partial_json ?? '')
-                  }
-                } else if (ev.type === 'content_block_stop') {
-                  if (currentBlock) {
-                    if (currentBlock.type === 'tool_use' && typeof currentBlock.input === 'string') {
-                      try { currentBlock.input = JSON.parse(currentBlock.input) } catch { currentBlock.input = {} }
-                    }
-                    contentBlocks.push(currentBlock)
-                    currentBlock = null
-                  }
-                } else if (ev.type === 'message_delta') {
-                  stopReason = ev.delta?.stop_reason ?? stopReason
-                }
-              }
-              return result
+      async function* wrappedStream(): AsyncGenerator<AnthropicStreamEvent> {
+        const source = fetchSSEStream<AnthropicStreamEvent>(
+          'https://api.anthropic.com/v1/messages',
+          headers,
+          JSON.stringify(body),
+          signal
+        )
+        for await (const ev of source) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const event = ev as any
+          if (event.type === 'content_block_start') {
+            currentBlock = { ...event.content_block }
+            if (currentBlock.type === 'text') currentBlock.text = ''
+            if (currentBlock.type === 'tool_use') currentBlock.input = ''
+            if (currentBlock.type === 'thinking') currentBlock.thinking = ''
+          } else if (event.type === 'content_block_delta') {
+            if (currentBlock) {
+              if (event.delta?.type === 'text_delta') currentBlock.text = (currentBlock.text ?? '') + (event.delta.text ?? '')
+              if (event.delta?.type === 'thinking_delta') currentBlock.thinking = (currentBlock.thinking ?? '') + (event.delta.thinking ?? '')
+              if (event.delta?.type === 'input_json_delta') currentBlock.input = (currentBlock.input ?? '') + (event.delta.partial_json ?? '')
             }
+          } else if (event.type === 'content_block_stop') {
+            if (currentBlock) {
+              if (currentBlock.type === 'tool_use' && typeof currentBlock.input === 'string') {
+                try { currentBlock.input = JSON.parse(currentBlock.input) } catch { currentBlock.input = {} }
+              }
+              contentBlocks.push(currentBlock)
+              currentBlock = null
+            }
+          } else if (event.type === 'message_delta') {
+            stopReason = event.delta?.stop_reason ?? stopReason
           }
+          yield ev
         }
       }
 
+      const gen = wrappedStream()
       return {
-        [Symbol.asyncIterator]() { return wrappedEvents[Symbol.asyncIterator]() },
+        [Symbol.asyncIterator]() { return gen },
         async finalMessage(): Promise<{ content: unknown[] }> {
-          await done.catch(() => {})
+          // By the time this is called the for-await loop has consumed the generator;
+          // contentBlocks and stopReason are already fully populated.
           return { content: contentBlocks, stop_reason: stopReason } as { content: unknown[] }
         }
       }
@@ -415,7 +314,7 @@ export function createFetchOpenAICaller(apiKey: string, baseURL?: string): OpenA
 
   return {
     async streamChat(params: OpenAIStreamParams, signal?: AbortSignal): Promise<AsyncIterable<OpenAIStreamChunk>> {
-      const { events } = xhrSSEStream<OpenAIStreamChunk>(
+      return fetchSSEStream<OpenAIStreamChunk>(
         `${base}/v1/chat/completions`,
         {
           'Content-Type': 'application/json',
@@ -424,7 +323,6 @@ export function createFetchOpenAICaller(apiKey: string, baseURL?: string): OpenA
         JSON.stringify(params),
         signal
       )
-      return events
     },
 
     async createChat(params: OpenAICreateParams): Promise<OpenAICreateResponse> {

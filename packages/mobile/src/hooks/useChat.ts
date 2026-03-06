@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useConversationsStore } from '../stores/conversations'
 import { useSettingsStore } from '../stores/settings'
+import { streamingRegistry } from '../stores/streamingRegistry'
 import {
   buildSystemPrompt,
   messagesToAnthropicFormat,
@@ -212,20 +213,9 @@ export function useChat(conversationId: string | null): UseChatReturn {
           ]
           pushBlocks()
         } else if (data.type === 'tool_use_delta' && data.toolInput) {
+          // Just accumulate — ActivityLog shows "Running tool_name..." not the JSON input,
+          // so no need to push a state update for every character of streamed tool input.
           currentToolInput += data.toolInput
-          if (currentToolIdx >= 0) {
-            const block = currentBlocks[currentToolIdx] as {
-              type: 'tool_use'; id: string; name: string; input: unknown
-            }
-            let parsedInput: unknown = {}
-            try { parsedInput = JSON.parse(currentToolInput) } catch { parsedInput = { raw: currentToolInput } }
-            currentBlocks = [
-              ...currentBlocks.slice(0, currentToolIdx),
-              { ...block, input: parsedInput },
-              ...currentBlocks.slice(currentToolIdx + 1)
-            ]
-            pushBlocks()
-          }
         } else if (data.type === 'error') {
           markError(data.error || 'Unknown error')
         }
@@ -233,6 +223,7 @@ export function useChat(conversationId: string | null): UseChatReturn {
       }
 
       streamingConvIdsRef.current.add(convId)
+      streamingRegistry.start()
       setStreamingState((prev) => ({ ...prev, [convId]: { msgId, blocks: [] } }))
 
       const controller = new AbortController()
@@ -296,6 +287,7 @@ export function useChat(conversationId: string | null): UseChatReturn {
         }
       } finally {
         abortControllers.current.delete(convId)
+        streamingRegistry.end()
 
         // Commit final message to store
         if (finalMsg && !errorHandled) {
