@@ -44,14 +44,8 @@ function ImageBlock({ uri, data, mediaType }: ImageBlockProps): JSX.Element {
   const ext = mediaType === 'image/png' ? '.png' : mediaType === 'image/webp' ? '.webp' : '.jpg'
 
   const closePreview = useCallback(() => {
-    Animated.timing(translateY, {
-      toValue: 700,
-      duration: 220,
-      useNativeDriver: true
-    }).start(() => {
-      setPreviewVisible(false)
-      translateY.setValue(0)
-    })
+    setPreviewVisible(false)
+    translateY.setValue(0)
   }, [translateY])
 
   const panResponder = useRef(
@@ -62,7 +56,8 @@ function ImageBlock({ uri, data, mediaType }: ImageBlockProps): JSX.Element {
       },
       onPanResponderRelease: (_, gs) => {
         if (gs.dy > 80 || gs.vy > 0.8) {
-          closePreview()
+          setPreviewVisible(false)
+          translateY.setValue(0)
         } else {
           Animated.spring(translateY, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start()
         }
