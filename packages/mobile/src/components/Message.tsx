@@ -1,10 +1,115 @@
-import React from 'react'
-import { View, Text, Pressable, Image, StyleSheet } from 'react-native'
-import { AlertCircle, RotateCcw } from 'lucide-react-native'
+import React, { useState, useCallback } from 'react'
+import {
+  View,
+  Text,
+  Pressable,
+  Image,
+  StyleSheet,
+  Modal,
+  useWindowDimensions,
+  Alert,
+  ActionSheetIOS,
+  Platform
+} from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { AlertCircle, RotateCcw, Download, X } from 'lucide-react-native'
+import * as MediaLibrary from 'expo-media-library'
+import * as FileSystem from 'expo-file-system/legacy'
+import * as Clipboard from 'expo-clipboard'
+import * as Haptics from 'expo-haptics'
 import { useTheme } from '../theme/ThemeProvider'
 import { MessageContent } from './MessageContent'
 import { ActivityLog } from './ActivityLog'
 import type { Message as MessageType, ContentBlock } from '@april/core'
+
+// ─── ImageBlock ──────────────────────────────────────────────────────────────
+
+interface ImageBlockProps {
+  uri: string
+  data: string
+  mediaType: string
+}
+
+function ImageBlock({ uri, data, mediaType }: ImageBlockProps): JSX.Element {
+  const colors = useTheme()
+  const { width: screenWidth } = useWindowDimensions()
+  const [aspectRatio, setAspectRatio] = useState(4 / 3)
+  const [previewVisible, setPreviewVisible] = useState(false)
+
+  const imageWidth = Math.min(240, screenWidth - 80)
+  const ext = mediaType === 'image/png' ? '.png' : mediaType === 'image/webp' ? '.webp' : '.jpg'
+
+  const saveImage = useCallback(async () => {
+    try {
+      const { status } = await MediaLibrary.requestPermissionsAsync()
+      if (status !== 'granted') {
+        Alert.alert('Permission required', 'Allow photo library access to save images.')
+        return
+      }
+      const filename = `april_${Date.now()}${ext}`
+      const fileUri = (FileSystem.cacheDirectory ?? '') + filename
+      await FileSystem.writeAsStringAsync(fileUri, data, { encoding: FileSystem.EncodingType.Base64 })
+      await MediaLibrary.saveToLibraryAsync(fileUri)
+      await FileSystem.deleteAsync(fileUri, { idempotent: true })
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+    } catch {
+      Alert.alert('Error', 'Failed to save image.')
+    }
+  }, [data, ext])
+
+  return (
+    <>
+      <Pressable
+        onPress={() => setPreviewVisible(true)}
+        onLongPress={saveImage}
+        delayLongPress={500}
+        style={{ marginVertical: 4 }}
+      >
+        <Image
+          source={{ uri }}
+          style={{
+            width: imageWidth,
+            height: imageWidth / aspectRatio,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: colors.border
+          }}
+          resizeMode="cover"
+          onLoad={(e) => {
+            const { width, height } = e.nativeEvent.source
+            if (width && height) setAspectRatio(width / height)
+          }}
+        />
+      </Pressable>
+
+      <Modal visible={previewVisible} transparent animationType="fade" statusBarTranslucent>
+        <View style={styles.previewOverlay}>
+          {/* Tapping the backdrop closes */}
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setPreviewVisible(false)} />
+
+          {/* Close button */}
+          <SafeAreaView edges={['top']} style={styles.previewTopBar}>
+            <Pressable onPress={() => setPreviewVisible(false)} style={styles.previewIconBtn}>
+              <X size={22} color="#fff" />
+            </Pressable>
+          </SafeAreaView>
+
+          {/* Full image */}
+          <Image source={{ uri }} style={styles.previewImage} resizeMode="contain" />
+
+          {/* Download button */}
+          <SafeAreaView edges={['bottom']} style={styles.previewBottomBar}>
+            <Pressable onPress={saveImage} style={styles.previewIconBtn}>
+              <Download size={26} color="#fff" />
+            </Pressable>
+          </SafeAreaView>
+        </View>
+      </Modal>
+    </>
+  )
+}
+
+// ─── Message ─────────────────────────────────────────────────────────────────
 
 interface Props {
   message: MessageType
@@ -41,13 +146,42 @@ export function Message({ message, isStreaming = false, isLast = false, onRetry 
     }
   }
 
+  const handleLongPress = useCallback(() => {
+    const textContent = message.blocks
+      .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+      .map(b => b.text)
+      .join('\n\n')
+    if (!textContent) return
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options: ['Cancel', 'Copy message'], cancelButtonIndex: 0 },
+        (index) => { if (index === 1) Clipboard.setStringAsync(textContent) }
+      )
+    } else {
+      Clipboard.setStringAsync(textContent)
+    }
+  }, [message.blocks])
+
   return (
-    <View style={[styles.messageRow, { backgroundColor: isUser ? `${colors.surface}80` : 'transparent', borderBottomColor: colors.border, borderBottomWidth: isLast && !isUser ? 0 : StyleSheet.hairlineWidth }]}>
+    <Pressable
+      onLongPress={handleLongPress}
+      delayLongPress={400}
+      style={[
+        styles.messageRow,
+        {
+          backgroundColor: isUser ? `${colors.surface}80` : 'transparent',
+          borderBottomColor: colors.border,
+          borderBottomWidth: isLast && !isUser ? 0 : StyleSheet.hairlineWidth
+        }
+      ]}
+    >
       <Text style={[styles.label, { color: colors.muted }]}>{label}</Text>
 
       {items.map((item, i) => {
         if (item.kind === 'text') {
-          // User messages: plain text. Assistant messages: markdown via WebView.
           if (isUser) {
             return (
               <Text key={i} style={[styles.messageText, { color: colors.text }]}>
@@ -60,13 +194,7 @@ export function Message({ message, isStreaming = false, isLast = false, onRetry 
         if (item.kind === 'image') {
           const uri = `data:${item.block.mediaType};base64,${item.block.data}`
           return (
-            <View key={i} style={styles.imageContainer}>
-              <Image
-                source={{ uri }}
-                style={[styles.imageThumb, { borderColor: colors.border }]}
-                resizeMode="cover"
-              />
-            </View>
+            <ImageBlock key={i} uri={uri} data={item.block.data} mediaType={item.block.mediaType} />
           )
         }
         return (
@@ -74,7 +202,6 @@ export function Message({ message, isStreaming = false, isLast = false, onRetry 
         )
       })}
 
-      {/* Error state */}
       {message.error && (
         <View style={[styles.errorBox, { borderColor: 'rgba(239,68,68,0.2)', backgroundColor: 'rgba(239,68,68,0.08)' }]}>
           <AlertCircle size={13} color="#f87171" />
@@ -88,14 +215,13 @@ export function Message({ message, isStreaming = false, isLast = false, onRetry 
         </View>
       )}
 
-      {/* Empty streaming state */}
       {message.blocks.length === 0 && isStreaming && (
         <View style={styles.thinkingRow}>
           <View style={[styles.pulseDot, { backgroundColor: colors.accent }]} />
           <Text style={{ color: colors.muted, fontSize: 12 }}>Thinking...</Text>
         </View>
       )}
-    </View>
+    </Pressable>
   )
 }
 
@@ -114,15 +240,6 @@ const styles = StyleSheet.create({
   messageText: {
     fontSize: 15,
     lineHeight: 22
-  },
-  imageContainer: {
-    marginVertical: 4
-  },
-  imageThumb: {
-    width: 220,
-    height: 165,
-    borderRadius: 10,
-    borderWidth: 1
   },
   errorBox: {
     flexDirection: 'row',
@@ -153,5 +270,26 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3
+  },
+  // Image preview modal
+  previewOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.96)',
+    justifyContent: 'space-between'
+  },
+  previewTopBar: {
+    alignItems: 'flex-end',
+    paddingHorizontal: 8
+  },
+  previewBottomBar: {
+    alignItems: 'center',
+    paddingVertical: 8
+  },
+  previewIconBtn: {
+    padding: 10
+  },
+  previewImage: {
+    flex: 1,
+    width: '100%'
   }
 })

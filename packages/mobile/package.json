@@ -21,6 +21,7 @@
     "expo-haptics": "~55.0.0",
     "expo-image-manipulator": "^55.0.9",
     "expo-image-picker": "~55.0.0",
+    "expo-media-library": "~55.0.9",
     "expo-router": "~55.0.0",
     "expo-secure-store": "~55.0.0",
     "expo-splash-screen": "~55.0.0",
