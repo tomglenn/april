@@ -1,9 +1,11 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useRef } from 'react'
 import {
   View,
   Text,
   Pressable,
   Image,
+  Animated,
+  PanResponder,
   StyleSheet,
   Modal,
   useWindowDimensions,
@@ -11,7 +13,7 @@ import {
   ActionSheetIOS,
   Platform
 } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { AlertCircle, RotateCcw, Download, X } from 'lucide-react-native'
 import * as MediaLibrary from 'expo-media-library'
 import * as FileSystem from 'expo-file-system/legacy'
@@ -33,11 +35,40 @@ interface ImageBlockProps {
 function ImageBlock({ uri, data, mediaType }: ImageBlockProps): JSX.Element {
   const colors = useTheme()
   const { width: screenWidth } = useWindowDimensions()
+  const insets = useSafeAreaInsets()
   const [aspectRatio, setAspectRatio] = useState(4 / 3)
   const [previewVisible, setPreviewVisible] = useState(false)
+  const translateY = useRef(new Animated.Value(0)).current
 
   const imageWidth = Math.min(240, screenWidth - 80)
   const ext = mediaType === 'image/png' ? '.png' : mediaType === 'image/webp' ? '.webp' : '.jpg'
+
+  const closePreview = useCallback(() => {
+    Animated.timing(translateY, {
+      toValue: 700,
+      duration: 220,
+      useNativeDriver: true
+    }).start(() => {
+      setPreviewVisible(false)
+      translateY.setValue(0)
+    })
+  }, [translateY])
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gs) => gs.dy > 8 && Math.abs(gs.dy) > Math.abs(gs.dx),
+      onPanResponderMove: (_, gs) => {
+        if (gs.dy > 0) translateY.setValue(gs.dy)
+      },
+      onPanResponderRelease: (_, gs) => {
+        if (gs.dy > 80 || gs.vy > 0.8) {
+          closePreview()
+        } else {
+          Animated.spring(translateY, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start()
+        }
+      }
+    })
+  ).current
 
   const saveImage = useCallback(async () => {
     try {
@@ -52,8 +83,8 @@ function ImageBlock({ uri, data, mediaType }: ImageBlockProps): JSX.Element {
       await MediaLibrary.saveToLibraryAsync(fileUri)
       await FileSystem.deleteAsync(fileUri, { idempotent: true })
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-    } catch {
-      Alert.alert('Error', 'Failed to save image.')
+    } catch (e) {
+      Alert.alert('Error', `Failed to save image: ${e instanceof Error ? e.message : String(e)}`)
     }
   }, [data, ext])
 
@@ -82,27 +113,29 @@ function ImageBlock({ uri, data, mediaType }: ImageBlockProps): JSX.Element {
         />
       </Pressable>
 
-      <Modal visible={previewVisible} transparent animationType="fade" statusBarTranslucent>
+      <Modal visible={previewVisible} transparent animationType="fade" statusBarTranslucent onRequestClose={closePreview}>
         <View style={styles.previewOverlay}>
-          {/* Tapping the backdrop closes */}
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setPreviewVisible(false)} />
+          {/* Backdrop closes on tap */}
+          <Pressable style={StyleSheet.absoluteFill} onPress={closePreview} />
 
-          {/* Close button */}
-          <SafeAreaView edges={['top']} style={styles.previewTopBar}>
-            <Pressable onPress={() => setPreviewVisible(false)} style={styles.previewIconBtn}>
-              <X size={22} color="#fff" />
-            </Pressable>
-          </SafeAreaView>
+          <Animated.View style={[{ flex: 1 }, { transform: [{ translateY }] }]} {...panResponder.panHandlers}>
+            {/* Close button — manual inset so it clears the status bar */}
+            <View style={[styles.previewTopBar, { paddingTop: insets.top + 4 }]}>
+              <Pressable onPress={closePreview} style={styles.previewIconBtn}>
+                <X size={22} color="#fff" />
+              </Pressable>
+            </View>
 
-          {/* Full image */}
-          <Image source={{ uri }} style={styles.previewImage} resizeMode="contain" />
+            {/* Full image */}
+            <Image source={{ uri }} style={styles.previewImage} resizeMode="contain" />
 
-          {/* Download button */}
-          <SafeAreaView edges={['bottom']} style={styles.previewBottomBar}>
-            <Pressable onPress={saveImage} style={styles.previewIconBtn}>
-              <Download size={26} color="#fff" />
-            </Pressable>
-          </SafeAreaView>
+            {/* Download button */}
+            <View style={[styles.previewBottomBar, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+              <Pressable onPress={saveImage} style={styles.previewIconBtn}>
+                <Download size={26} color="#fff" />
+              </Pressable>
+            </View>
+          </Animated.View>
         </View>
       </Modal>
     </>
