@@ -1,12 +1,10 @@
-import Anthropic from '@anthropic-ai/sdk'
-import type { MessageCreateParamsStreaming } from '@anthropic-ai/sdk/resources/messages'
-import OpenAI from 'openai'
 import { DEFAULT_SYSTEM_PROMPT } from './constants'
 import { executeTool, TOOLS } from './tools'
 import { mcpManager } from './mcp'
 import { estimateTokens, truncateAnthropicMessages, truncateOpenAIMessages, summariseAnthropicMessages, summariseOpenAIMessages } from './context'
 import type { ToolDefinition } from './tools'
 import type { Settings, Message, ContentBlock } from './types'
+import type { AnthropicCaller, OpenAICaller } from './http'
 
 const MAX_TOOL_RESULT_CHARS = 12_000
 const MAX_TOOL_TURNS = 15
@@ -47,8 +45,15 @@ export interface ChunkData {
 
 // ── Format converters ─────────────────────────────────────────────────────────
 
-export function messagesToAnthropicFormat(messages: Message[]): Anthropic.MessageParam[] {
-  const result: Anthropic.MessageParam[] = []
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AnthropicMessageParam = { role: 'user' | 'assistant'; content: any }
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AnthropicToolResultBlock = { type: 'tool_result'; tool_use_id: string; content: any }
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type OpenAIMessageParam = { role: string; content: any; tool_calls?: any; tool_call_id?: string }
+
+export function messagesToAnthropicFormat(messages: Message[]): AnthropicMessageParam[] {
+  const result: AnthropicMessageParam[] = []
 
   for (const msg of messages) {
     if (msg.role === 'user') {
@@ -77,8 +82,9 @@ export function messagesToAnthropicFormat(messages: Message[]): Anthropic.Messag
     // We need to re-split them so tool_result blocks go into user turns, e.g.:
     //   [text, tool_use, tool_result, text]
     //   → assistant:[text, tool_use]  user:[tool_result]  assistant:[text]
-    let assistantContent: Anthropic.ContentBlockParam[] = []
-    let toolResults: Anthropic.ToolResultBlockParam[] = []
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let assistantContent: any[] = []
+    let toolResults: AnthropicToolResultBlock[] = []
 
     for (const block of msg.blocks) {
       if (block.type === 'tool_result') {
@@ -128,10 +134,10 @@ export function messagesToAnthropicFormat(messages: Message[]): Anthropic.Messag
   return result
 }
 
-export function messagesToOpenAIFormat(messages: Message[]): OpenAI.ChatCompletionMessageParam[] {
+export function messagesToOpenAIFormat(messages: Message[]): OpenAIMessageParam[] {
   return messages.map((msg) => {
     if (msg.role === 'user' && msg.blocks.some((b) => b.type === 'image')) {
-      const content: OpenAI.ChatCompletionContentPart[] = [
+      const content = [
         ...msg.blocks
           .filter((b) => b.type === 'image')
           .map((b) => {
@@ -203,8 +209,8 @@ You have persistent memory across conversations.${memories.length > 0 ? ' Your c
 // ── Anthropic agentic loop ────────────────────────────────────────────────────
 
 export async function runAnthropicLoop(
-  anthropic: Anthropic,
-  baseParams: MessageCreateParamsStreaming,
+  caller: AnthropicCaller,
+  baseParams: { model: string; max_tokens: number; system?: unknown; tools?: unknown[]; messages: AnthropicMessageParam[]; thinking?: { type: string; budget_tokens: number }; betas?: string[] },
   sendChunk: (data: ChunkData) => void,
   signal: AbortSignal,
   openaiApiKey?: string,
@@ -212,7 +218,7 @@ export async function runAnthropicLoop(
   anthropicApiKey?: string,
   recentExchanges?: number
 ): Promise<Message> {
-  const messages: Anthropic.MessageParam[] = [...baseParams.messages]
+  const messages: AnthropicMessageParam[] = [...baseParams.messages]
   const allBlocks: ContentBlock[] = []
 
   const makePartialMessage = (): Message => ({
@@ -226,7 +232,7 @@ export async function runAnthropicLoop(
 
   // Summarise once before the agentic loop — tool iterations won't re-trigger
   const baseMessageCount = messages.length
-  let summarisedBase: Anthropic.MessageParam[] | null = null
+  let summarisedBase: AnthropicMessageParam[] | null = null
   if (conversationId && anthropicApiKey) {
     summarisedBase = await summariseAnthropicMessages(conversationId, messages, anthropicApiKey, recentExchanges)
   }
@@ -250,7 +256,7 @@ export async function runAnthropicLoop(
     const messageTokens = estimateTokens(trimmedMessages)
     console.log(`[api] ~${cachedTokens + messageTokens} input tokens (~${cachedTokens} cached, ~${messageTokens} uncached) → ${baseParams.model}`)
 
-    const stream = anthropic.messages.stream({ ...baseParams, messages: trimmedMessages }, { signal })
+    const stream = caller.streamMessage({ ...baseParams, messages: trimmedMessages }, signal)
 
     // Collect tool_use blocks from this turn so we can execute them
     const turnToolUses: Array<{ id: string; name: string; input: string }> = []
@@ -328,7 +334,7 @@ export async function runAnthropicLoop(
     messages.push({ role: 'assistant', content: finalMsg.content })
 
     // Execute each tool and collect results
-    const toolResults: Anthropic.ToolResultBlockParam[] = []
+    const toolResults: AnthropicToolResultBlock[] = []
     for (const tu of turnToolUses) {
       const input = (() => {
         try { return JSON.parse(tu.input || '{}') } catch { return {} }
@@ -362,9 +368,9 @@ export async function runAnthropicLoop(
 // ── OpenAI agentic loop ───────────────────────────────────────────────────────
 
 export async function runOpenAILoop(
-  openai: OpenAI,
+  caller: OpenAICaller,
   model: string,
-  initialMessages: OpenAI.ChatCompletionMessageParam[],
+  initialMessages: OpenAIMessageParam[],
   sendChunk: (data: ChunkData) => void,
   signal: AbortSignal,
   tools: ToolDefinition[] = [],
@@ -376,7 +382,7 @@ export async function runOpenAILoop(
   const messages = [...initialMessages]
   const allBlocks: ContentBlock[] = []
 
-  const openaiTools: OpenAI.ChatCompletionTool[] = tools.map((t) => ({
+  const openaiTools = tools.map((t) => ({
     type: 'function' as const,
     function: { name: t.name, description: t.description, parameters: t.input_schema }
   }))
@@ -392,7 +398,7 @@ export async function runOpenAILoop(
 
   // Summarise once before the agentic loop — tool iterations won't re-trigger
   const baseMessageCount = messages.length
-  let summarisedBase: OpenAI.ChatCompletionMessageParam[] | null = null
+  let summarisedBase: OpenAIMessageParam[] | null = null
   if (conversationId && openaiApiKey && provider) {
     summarisedBase = await summariseOpenAIMessages(conversationId, messages, openaiApiKey, provider, recentExchanges)
   }
@@ -409,11 +415,12 @@ export async function runOpenAILoop(
     const trimmedMessages = truncateOpenAIMessages(effectiveMessages, model)
     console.log(`[api] ~${estimateTokens(...trimmedMessages)} input tokens → ${model}`)
 
-    let stream: Awaited<ReturnType<typeof openai.chat.completions.create>>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let stream: AsyncIterable<any>
     try {
-      stream = await openai.chat.completions.create(
-        { model, messages: trimmedMessages, ...(openaiTools.length > 0 && { tools: openaiTools }), stream: true },
-        { signal }
+      stream = await caller.streamChat(
+        { model, messages: trimmedMessages, ...(openaiTools.length > 0 && { tools: openaiTools }), stream: true as const },
+        signal
       )
     } catch (err: unknown) {
       const e = err as { name?: string }
@@ -478,7 +485,7 @@ export async function runOpenAILoop(
     }
 
     // Add assistant message with tool_calls
-    const toolCalls: OpenAI.ChatCompletionMessageToolCall[] = Object.entries(toolCallAccumulators).map(
+    const toolCalls = Object.entries(toolCallAccumulators).map(
       ([index, acc]) => ({
         id: `call_${index}`,
         type: 'function' as const,

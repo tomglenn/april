@@ -9,6 +9,7 @@ import type { Message as MessageType, ContentBlock } from '../types'
 interface Props {
   message: MessageType
   isStreaming?: boolean
+  isLast?: boolean
   onRetry?: () => void
   hasOpenAIKey?: boolean
   voicePhase?: 'generating' | 'playing' | null
@@ -152,7 +153,7 @@ function TextContent({ text }: { text: string }): JSX.Element {
   )
 }
 
-export function Message({ message, isStreaming = false, onRetry, hasOpenAIKey, voicePhase, onSpeak, onStopSpeaking }: Props): JSX.Element {
+export function Message({ message, isStreaming = false, isLast = false, onRetry, hasOpenAIKey, voicePhase, onSpeak, onStopSpeaking }: Props): JSX.Element {
   const isUser = message.role === 'user'
   const label = isUser ? 'You' : 'April'
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
@@ -189,7 +190,7 @@ export function Message({ message, isStreaming = false, onRetry, hasOpenAIKey, v
 
   return (
     <div
-      className="group px-6 py-4 border-b"
+      className={`group px-6 py-4${isLast && !isUser ? '' : ' border-b'}`}
       style={{
         borderColor: 'var(--border)',
         background: isUser ? 'var(--surface-alt)' : 'transparent'

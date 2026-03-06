@@ -1,6 +1,6 @@
-import OpenAI from 'openai'
 import { getPlatform } from './platform'
 import { mcpManager } from './mcp'
+import { createFetchOpenAICaller } from './http'
 
 export type ToolResult =
   | { type: 'text'; content: string }
@@ -371,10 +371,8 @@ async function generateImage(input: unknown, openaiApiKey: string): Promise<Tool
     return { type: 'text', content: 'Tool error: An OpenAI API key is required for image generation. Please add yours in Settings.' }
   }
 
-  const openai = new OpenAI({ apiKey: openaiApiKey })
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const response = await (openai.images.generate as (p: any) => Promise<{ data?: Array<{ b64_json?: string }> }>)({
+  const caller = createFetchOpenAICaller(openaiApiKey)
+  const response = await caller.generateImage({
     model: 'gpt-image-1',
     prompt,
     n: 1,

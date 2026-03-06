@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "April",
+    "slug": "april",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "april",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "backgroundColor": "#0f0f10",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "bundleIdentifier": "com.april.agent",
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0f0f10"
+      },
+      "package": "com.april.agent"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        { "photosPermission": "April needs access to your photos to attach images to messages." }
+      ],
+      [
+        "expo-audio",
+        { "microphonePermission": "April needs access to your microphone for voice input." }
+      ]
+    ]
+  }
+}
