@@ -152,7 +152,7 @@ export function ConversationView(): JSX.Element {
               )
             }}
             contentContainerStyle={{ paddingBottom: 8 }}
-            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+            onContentSizeChange={() => { if (isActiveStreaming) flatListRef.current?.scrollToEnd({ animated: false }) }}
           />
         )}
 
@@ -163,6 +163,7 @@ export function ConversationView(): JSX.Element {
           model={effectiveModel}
           provider={effectiveProvider}
           missingKey={!!missingKey}
+          onFocus={() => setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 350)}
         />
         <View style={{ height: insets.bottom, backgroundColor: colors.surface }} />
       </KeyboardAvoidingView>

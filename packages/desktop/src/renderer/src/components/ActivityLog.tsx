@@ -254,11 +254,10 @@ export function ActivityLog({ blocks, isStreaming }: Props): JSX.Element | null 
                 <span className="font-medium">thinking</span>
               </div>
               <div
-                className="font-mono text-xs leading-relaxed line-clamp-3"
+                className="font-mono text-xs leading-relaxed"
                 style={{ color: 'var(--muted)' }}
               >
-                {b.thinking.slice(0, 200)}
-                {b.thinking.length > 200 ? '…' : ''}
+                {b.thinking}
               </div>
             </div>
           ))}
@@ -276,27 +275,22 @@ export function ActivityLog({ blocks, isStreaming }: Props): JSX.Element | null 
                     ? inp.location
                     : JSON.stringify(tu.input)
 
-            const resultPreview = result
-              ? result.slice(0, 120) + (result.length > 120 ? '…' : '')
-              : '(pending)'
-
             return (
               <div key={tu.id}>
                 <div className="flex items-center gap-1.5 mb-0.5" style={{ color: 'var(--muted)' }}>
                   {toolIcon(tu.name)}
-                  <span className="font-medium">{friendlyToolLabel(tu.name)}</span>
-                  {inputStr && (
-                    <span
-                      className="font-mono truncate max-w-[240px]"
-                      style={{ color: 'var(--text)', opacity: 0.6 }}
-                    >
-                      {inputStr.slice(0, 60)}
-                    </span>
-                  )}
+                  <span className="font-medium shrink-0">{friendlyToolLabel(tu.name)}</span>
                 </div>
-                <div className="font-mono leading-relaxed" style={{ color: 'var(--muted)', opacity: 0.7 }}>
-                  {resultPreview}
-                </div>
+                {inputStr && (
+                  <div className="font-mono leading-relaxed" style={{ color: 'var(--text)', opacity: 0.6 }}>
+                    {inputStr}
+                  </div>
+                )}
+                {result && (
+                  <div className="font-mono leading-relaxed" style={{ color: 'var(--muted)', opacity: 0.7 }}>
+                    {result}
+                  </div>
+                )}
               </div>
             )
           })}

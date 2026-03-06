@@ -153,11 +153,9 @@ export function ActivityLog({ blocks, isStreaming }: Props): JSX.Element | null 
   return (
     <View style={styles.logContainer}>
       <Pressable onPress={() => setExpanded((v) => !v)} style={styles.summaryRow}>
-        <ChevronRight
-          size={11}
-          color={colors.muted}
-          style={{ transform: [{ rotate: expanded ? '90deg' : '0deg' }] }}
-        />
+        <View style={{ transform: [{ rotate: expanded ? '90deg' : '0deg' }] }}>
+          <ChevronRight size={11} color={colors.muted} />
+        </View>
         <Text style={{ color: colors.muted, fontSize: 12, opacity: 0.7 }}>{summary}</Text>
       </Pressable>
 
@@ -170,24 +168,24 @@ export function ActivityLog({ blocks, isStreaming }: Props): JSX.Element | null 
               : tu.name === 'get_weather' ? inp.location
               : JSON.stringify(tu.input)
             const result = resultMap.get(tu.id)
-            const preview = result ? result.slice(0, 120) + (result.length > 120 ? '...' : '') : '(pending)'
-
             return (
               <View key={tu.id} style={styles.toolEntry}>
                 <View style={styles.toolHeader}>
                   <ToolIcon name={tu.name} />
-                  <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '600' }}>
+                  <Text style={{ color: colors.muted, fontSize: 11, fontWeight: '600', flexShrink: 0 }}>
                     {friendlyToolLabel(tu.name)}
                   </Text>
-                  {inputStr && (
-                    <Text style={{ color: colors.text, fontSize: 11, opacity: 0.6 }} numberOfLines={1}>
-                      {inputStr.slice(0, 60)}
-                    </Text>
-                  )}
                 </View>
-                <Text style={{ color: colors.muted, fontSize: 11, opacity: 0.7 }} numberOfLines={2}>
-                  {preview}
-                </Text>
+                {inputStr && (
+                  <Text style={{ color: colors.text, fontSize: 11, opacity: 0.6 }}>
+                    {inputStr}
+                  </Text>
+                )}
+                {result && (
+                  <Text style={{ color: colors.muted, fontSize: 11, opacity: 0.7 }}>
+                    {result}
+                  </Text>
+                )}
               </View>
             )
           })}

@@ -28,10 +28,11 @@ interface Props {
   model: string
   provider: string
   missingKey?: boolean
+  onFocus?: () => void
 }
 
 export function InputBar({
-  onSend, onStop, isStreaming, model, missingKey
+  onSend, onStop, isStreaming, model, missingKey, onFocus
 }: Props): JSX.Element {
   const colors = useTheme()
   const [text, setText] = useState('')
@@ -147,6 +148,7 @@ export function InputBar({
           multiline
           style={[styles.input, { color: colors.text, height: inputHeight }]}
           onContentSizeChange={handleContentSizeChange}
+          onFocus={onFocus}
           editable={!missingKey}
         />
 

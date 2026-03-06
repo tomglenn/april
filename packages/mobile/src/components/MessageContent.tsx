@@ -142,7 +142,7 @@ export function MessageContent({ text }: Props): JSX.Element {
   const tokens = tokenize(text)
 
   return (
-    <View>
+    <View style={{ flexShrink: 1, minWidth: 0 }}>
       {tokens.map((token, i) => {
         if (token.type === 'heading') {
           const fontSize = token.level === 1 ? 20 : token.level === 2 ? 18 : token.level === 3 ? 16 : 15
