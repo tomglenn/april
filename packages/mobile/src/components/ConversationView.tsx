@@ -10,14 +10,16 @@ import {
 } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation, DrawerActions } from '@react-navigation/native'
-import { Menu } from 'lucide-react-native'
+import { Menu, Command } from 'lucide-react-native'
 import * as Haptics from 'expo-haptics'
 import { useConversationsStore } from '../stores/conversations'
 import { useSettingsStore } from '../stores/settings'
 import { useTheme } from '../theme/ThemeProvider'
 import { useChat } from '../hooks/useChat'
+import { useCommandPalette } from '../hooks/useCommandPalette'
 import { Message } from './Message'
 import { InputBar } from './InputBar'
+import { CommandPalette } from './CommandPalette'
 import { MODEL_CATALOG } from '../models'
 import type { ImageAttachment } from '@april/core'
 
@@ -39,6 +41,7 @@ export function ConversationView(): JSX.Element {
   const navigation = useNavigation()
   const insets = useSafeAreaInsets()
   const { streamingState, sendMessage, stopStreaming, retryMessage } = useChat(activeId)
+  const { isOpen: paletteOpen, open: openPalette, close: closePalette } = useCommandPalette()
   const activeStream = activeId ? streamingState[activeId] : undefined
   const isActiveStreaming = !!activeStream
   const flatListRef = useRef<FlatList>(null)
@@ -106,6 +109,9 @@ export function ConversationView(): JSX.Element {
         <Text style={{ fontSize: 13, color: colors.muted, flex: 1 }} numberOfLines={1}>
           {MODEL_CATALOG.find((m) => m.model === effectiveModel)?.label ?? effectiveModel}
         </Text>
+        <Pressable onPress={openPalette} style={styles.menuButton} hitSlop={8}>
+          <Command size={18} color={colors.muted} />
+        </Pressable>
       </View>
 
       <KeyboardAvoidingView
@@ -167,6 +173,9 @@ export function ConversationView(): JSX.Element {
         />
         <View style={{ height: insets.bottom, backgroundColor: colors.surface }} />
       </KeyboardAvoidingView>
+
+      {/* Command palette overlay */}
+      <CommandPalette isOpen={paletteOpen} onClose={closePalette} />
     </SafeAreaView>
   )
 }

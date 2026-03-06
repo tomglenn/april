@@ -21,9 +21,9 @@ export async function loadLocalSettings(): Promise<LocalSettings> {
       const val = await SecureStore.getItemAsync(`april_${key}`)
       if (val !== null) {
         if (key === 'setupCompleted') {
-          (_cachedLocal as Record<string, unknown>)[key] = val === 'true'
+          (_cachedLocal as unknown as Record<string, unknown>)[key] = val === 'true'
         } else {
-          (_cachedLocal as Record<string, unknown>)[key] = val
+          (_cachedLocal as unknown as Record<string, unknown>)[key] = val
         }
       }
     } catch {
@@ -42,7 +42,7 @@ export async function setLocalSettings(partial: Partial<LocalSettings>): Promise
     const storageKey = `april_${key}`
     const storageValue = typeof value === 'boolean' ? String(value) : String(value ?? '')
     await SecureStore.setItemAsync(storageKey, storageValue)
-    ;(_cachedLocal as Record<string, unknown>)[key] = value
+    ;(_cachedLocal as unknown as Record<string, unknown>)[key] = value
   }
 }
 

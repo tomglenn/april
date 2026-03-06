@@ -1,6 +1,7 @@
 import React from 'react'
 import { Text, View, StyleSheet, ScrollView } from 'react-native'
 import { useTheme } from '../theme/ThemeProvider'
+import type { ThemeColors } from '../theme'
 
 interface Props {
   text: string
@@ -93,7 +94,7 @@ function tokenize(md: string): Token[] {
 }
 
 /** Render inline markdown (bold, italic, inline code, links) to Text nodes */
-function renderInline(text: string, colors: Record<string, string>): React.ReactNode[] {
+function renderInline(text: string, colors: ThemeColors): React.ReactNode[] {
   const nodes: React.ReactNode[] = []
   // Pattern matches: **bold**, *italic*, `code`, [text](url)
   const pattern = /(\*\*\*(.+?)\*\*\*|\*\*(.+?)\*\*|\*(.+?)\*|`([^`]+)`|\[([^\]]+)\]\(([^)]+)\))/g
