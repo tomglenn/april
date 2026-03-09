@@ -88,31 +88,11 @@ export function useChat(conversationId: string | null): UseChatReturn {
       const settings = useSettingsStore.getState().settings
       if (!settings) return
 
-      // Build image content blocks — save to file system so that base64 blobs
-      // are never stored inline in the conversation JSON.
-      const imageBlocks: ContentBlock[] = await Promise.all(
-        (images ?? []).map(async (img) => {
-          const base64 = img.dataUrl.split(',')[1]
-          try {
-            const fileUri = await saveImageToFile(base64, img.mediaType)
-            console.log(`[chat] Image saved to file: ${fileUri}`)
-            return { type: 'image' as const, mediaType: img.mediaType, data: '', fileUri }
-          } catch {
-            // Fall back to inline storage if file write fails
-            console.warn('[chat] Could not save image to file, storing inline')
-            return { type: 'image' as const, mediaType: img.mediaType, data: base64 }
-          }
-        })
-      )
-
-      // Add user message
+      // Add user message (image blocks resolved inside try below)
       const userMsg: Message = {
         id: generateUUID(),
         role: 'user',
-        blocks: [
-          ...imageBlocks,
-          ...(text.trim() ? [{ type: 'text' as const, text }] : [])
-        ],
+        blocks: [],
         timestamp: Date.now()
       }
       addMessage(convId, userMsg)
@@ -242,13 +222,38 @@ export function useChat(conversationId: string | null): UseChatReturn {
 
       let finalMsg: Message | null = null
       try {
+        // Build image blocks — save to file system so base64 blobs are never
+        // stored inline in the conversation JSON. Done inside try so any failure
+        // is caught and handled rather than becoming an uncaught rejection.
+        const imageBlocks: ContentBlock[] = await Promise.all(
+          (images ?? []).map(async (img) => {
+            const base64 = img.dataUrl.split(',')[1]
+            try {
+              const fileUri = await saveImageToFile(base64, img.mediaType)
+              return { type: 'image' as const, mediaType: img.mediaType, data: '', fileUri }
+            } catch {
+              return { type: 'image' as const, mediaType: img.mediaType, data: base64 }
+            }
+          })
+        )
+        // Patch the user message with resolved image blocks
+        const userBlocks: ContentBlock[] = [
+          ...imageBlocks,
+          ...(text.trim() ? [{ type: 'text' as const, text }] : [])
+        ]
+        updateMessageById(convId, userMsg.id, (m) => ({ ...m, blocks: userBlocks }))
+
+        // Re-read from store so allMessages reflects the patched user message
+        const updatedConv = useConversationsStore.getState().conversations.find((c) => c.id === convId)
+        const currentMessages = updatedConv?.messages ?? allMessages
+
         const systemPrompt = buildSystemPrompt(settings)
         const availableTools = getAvailableTools(settings)
 
         // Resolve image data for the API: only the last user message with images
         // needs its base64 data loaded from disk; all others are stripped by
         // truncation anyway. Assistant image blocks are always dropped.
-        const messagesForApi = await resolveImagesForApi(allMessages)
+        const messagesForApi = await resolveImagesForApi(currentMessages)
 
         if (provider === 'anthropic') {
           const caller = createFetchAnthropicCaller(settings.anthropicApiKey)

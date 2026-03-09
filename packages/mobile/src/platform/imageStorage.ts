@@ -5,12 +5,17 @@ import * as FileSystem from 'expo-file-system/legacy'
 // writes. The trade-off is that images don't sync via iCloud, but the
 // conversation JSON (which does sync) references them by fileUri and falls
 // back to rendering nothing if the file isn't present on another device.
-const IMAGES_DIR = (FileSystem.documentDirectory ?? '') + 'april-data/images/'
+function getImagesDir(): string {
+  // Evaluated lazily so FileSystem.documentDirectory is resolved after native
+  // module initialisation (it can be null at module evaluation time).
+  return (FileSystem.documentDirectory ?? '') + 'april-data/images/'
+}
 
 async function ensureImagesDir(): Promise<void> {
-  const info = await FileSystem.getInfoAsync(IMAGES_DIR)
+  const dir = getImagesDir()
+  const info = await FileSystem.getInfoAsync(dir)
   if (!info.exists) {
-    await FileSystem.makeDirectoryAsync(IMAGES_DIR, { intermediates: true })
+    await FileSystem.makeDirectoryAsync(dir, { intermediates: true })
   }
 }
 
@@ -22,7 +27,7 @@ function makeId(): string {
 export async function saveImageToFile(base64Data: string, mediaType: string): Promise<string> {
   await ensureImagesDir()
   const ext = mediaType === 'image/png' ? '.png' : mediaType === 'image/webp' ? '.webp' : '.jpg'
-  const fileUri = IMAGES_DIR + makeId() + ext
+  const fileUri = getImagesDir() + makeId() + ext
   await FileSystem.writeAsStringAsync(fileUri, base64Data, {
     encoding: FileSystem.EncodingType.Base64
   })
