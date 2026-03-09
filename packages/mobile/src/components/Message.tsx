@@ -27,12 +27,16 @@ import type { Message as MessageType, ContentBlock } from '@april/core'
 // ─── ImageBlock ──────────────────────────────────────────────────────────────
 
 interface ImageBlockProps {
+  /** Display URI: either a file:// path or a data:...;base64,... string. */
   uri: string
+  /** Local file path, if the image is stored on disk (preferred for saving). */
+  fileUri?: string
+  /** Raw base64 data, present when image is stored inline (legacy / fallback). */
   data: string
   mediaType: string
 }
 
-function ImageBlock({ uri, data, mediaType }: ImageBlockProps): JSX.Element {
+function ImageBlock({ uri, fileUri, data, mediaType }: ImageBlockProps): JSX.Element {
   const colors = useTheme()
   const { width: screenWidth } = useWindowDimensions()
   const insets = useSafeAreaInsets()
@@ -72,16 +76,22 @@ function ImageBlock({ uri, data, mediaType }: ImageBlockProps): JSX.Element {
         Alert.alert('Permission required', 'Allow photo library access to save images.')
         return
       }
-      const filename = `april_${Date.now()}${ext}`
-      const fileUri = (FileSystem.cacheDirectory ?? '') + filename
-      await FileSystem.writeAsStringAsync(fileUri, data, { encoding: FileSystem.EncodingType.Base64 })
-      await MediaLibrary.saveToLibraryAsync(fileUri)
-      await FileSystem.deleteAsync(fileUri, { idempotent: true })
+      if (fileUri) {
+        // Image is already on disk — save directly without a temp-file round-trip
+        await MediaLibrary.saveToLibraryAsync(fileUri)
+      } else if (data) {
+        // Inline base64 (legacy / fallback path)
+        const filename = `april_${Date.now()}${ext}`
+        const tempUri = (FileSystem.cacheDirectory ?? '') + filename
+        await FileSystem.writeAsStringAsync(tempUri, data, { encoding: FileSystem.EncodingType.Base64 })
+        await MediaLibrary.saveToLibraryAsync(tempUri)
+        await FileSystem.deleteAsync(tempUri, { idempotent: true })
+      }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
     } catch (e) {
       Alert.alert('Error', `Failed to save image: ${e instanceof Error ? e.message : String(e)}`)
     }
-  }, [data, ext])
+  }, [fileUri, data, ext])
 
   return (
     <>
@@ -220,9 +230,19 @@ export function Message({ message, isStreaming = false, isLast = false, onRetry 
           return <MessageContent key={i} text={item.text} />
         }
         if (item.kind === 'image') {
-          const uri = `data:${item.block.mediaType};base64,${item.block.data}`
+          const block = item.block as { type: 'image'; mediaType: string; data: string; fileUri?: string }
+          // Prefer file URI for display (React Native Image supports file:// directly)
+          const uri = block.fileUri
+            ? block.fileUri
+            : `data:${block.mediaType};base64,${block.data}`
           return (
-            <ImageBlock key={i} uri={uri} data={item.block.data} mediaType={item.block.mediaType} />
+            <ImageBlock
+              key={i}
+              uri={uri}
+              fileUri={block.fileUri}
+              data={block.data}
+              mediaType={block.mediaType}
+            />
           )
         }
         return (

@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useConversationsStore } from '../stores/conversations'
 import { useSettingsStore } from '../stores/settings'
 import { streamingRegistry } from '../stores/streamingRegistry'
+import { saveImageToFile, readImageAsBase64, deleteImageFile } from '../platform/imageStorage'
 import {
   buildSystemPrompt,
   messagesToAnthropicFormat,
@@ -87,12 +88,22 @@ export function useChat(conversationId: string | null): UseChatReturn {
       const settings = useSettingsStore.getState().settings
       if (!settings) return
 
-      // Build image content blocks
-      const imageBlocks: ContentBlock[] = (images ?? []).map((img) => {
-        const data = img.dataUrl.split(',')[1]
-        console.log(`[chat] Image block: ${img.mediaType}, ${Math.round((data?.length ?? 0) / 1024)}KB base64`)
-        return { type: 'image' as const, mediaType: img.mediaType, data }
-      })
+      // Build image content blocks — save to file system so that base64 blobs
+      // are never stored inline in the conversation JSON.
+      const imageBlocks: ContentBlock[] = await Promise.all(
+        (images ?? []).map(async (img) => {
+          const base64 = img.dataUrl.split(',')[1]
+          try {
+            const fileUri = await saveImageToFile(base64, img.mediaType)
+            console.log(`[chat] Image saved to file: ${fileUri}`)
+            return { type: 'image' as const, mediaType: img.mediaType, data: '', fileUri }
+          } catch {
+            // Fall back to inline storage if file write fails
+            console.warn('[chat] Could not save image to file, storing inline')
+            return { type: 'image' as const, mediaType: img.mediaType, data: base64 }
+          }
+        })
+      )
 
       // Add user message
       const userMsg: Message = {
@@ -234,13 +245,15 @@ export function useChat(conversationId: string | null): UseChatReturn {
         const systemPrompt = buildSystemPrompt(settings)
         const availableTools = getAvailableTools(settings)
 
+        // Resolve image data for the API: only the last user message with images
+        // needs its base64 data loaded from disk; all others are stripped by
+        // truncation anyway. Assistant image blocks are always dropped.
+        const messagesForApi = await resolveImagesForApi(allMessages)
+
         if (provider === 'anthropic') {
           const caller = createFetchAnthropicCaller(settings.anthropicApiKey)
-          // Strip image blocks from assistant messages — they are always dropped in
-          // messagesToAnthropicFormat anyway, but removing them first avoids serialising
-          // large generated-image base64 blobs into the API request body needlessly.
           const anthropicMessages = messagesToAnthropicFormat(
-            allMessages.map((m) =>
+            messagesForApi.map((m) =>
               m.role === 'assistant'
                 ? { ...m, blocks: m.blocks.filter((b) => b.type !== 'image') }
                 : m
@@ -281,7 +294,7 @@ export function useChat(conversationId: string | null): UseChatReturn {
           const openaiMessages = [
             ...(systemPrompt ? [{ role: 'system' as const, content: systemPrompt }] : []),
             ...messagesToOpenAIFormat(
-              allMessages.map((m) =>
+              messagesForApi.map((m) =>
                 m.role === 'assistant'
                   ? { ...m, blocks: m.blocks.filter((b) => b.type !== 'image') }
                   : m
@@ -303,6 +316,27 @@ export function useChat(conversationId: string | null): UseChatReturn {
       } finally {
         abortControllers.current.delete(convId)
         streamingRegistry.end()
+
+        // Save any generated images in finalMsg to files before committing to
+        // the store, so that base64 blobs are never persisted inline in JSON.
+        if (finalMsg && !errorHandled) {
+          try {
+            const savedBlocks = await Promise.all(
+              finalMsg.blocks.map(async (b) => {
+                if (b.type !== 'image') return b
+                const img = b as { type: 'image'; mediaType: string; data: string; fileUri?: string }
+                if (img.fileUri || !img.data) return b
+                try {
+                  const fileUri = await saveImageToFile(img.data, img.mediaType)
+                  return { type: 'image' as const, mediaType: img.mediaType, data: '', fileUri }
+                } catch {
+                  return b // keep inline as fallback
+                }
+              })
+            )
+            finalMsg = { ...finalMsg, blocks: savedBlocks }
+          } catch { /* ignore, keep whatever finalMsg has */ }
+        }
 
         // Commit final message to store
         if (finalMsg && !errorHandled) {
@@ -341,17 +375,43 @@ export function useChat(conversationId: string | null): UseChatReturn {
     async (msg: Message) => {
       const convId = activeConvIdRef.current
       if (!convId || streamingConvIdsRef.current.has(convId)) return
+
+      // Collect fileUris of image blocks so we can clean up old files after
+      // sendMessage writes the images to new files.
+      const oldImageFileUris = msg.blocks
+        .filter((b) => b.type === 'image')
+        .map((b) => (b as { type: 'image'; fileUri?: string }).fileUri)
+        .filter((u): u is string => !!u)
+
       removeMessageById(convId, msg.id)
+
+      // Clean up old image files now that the message is removed from the store
+      for (const uri of oldImageFileUris) {
+        deleteImageFile(uri).catch(() => {})
+      }
+
       const text = msg.blocks
         .filter((b) => b.type === 'text')
         .map((b) => (b as { type: 'text'; text: string }).text)
         .join('\n')
-      const images: ImageAttachment[] = msg.blocks
-        .filter((b) => b.type === 'image')
-        .map((b) => {
-          const img = b as { type: 'image'; mediaType: string; data: string }
-          return { id: generateUUID(), dataUrl: `data:${img.mediaType};base64,${img.data}`, mediaType: img.mediaType }
-        })
+
+      // Rebuild ImageAttachment[] — read from file if data was offloaded
+      const images: ImageAttachment[] = (
+        await Promise.all(
+          msg.blocks
+            .filter((b) => b.type === 'image')
+            .map(async (b) => {
+              const img = b as { type: 'image'; mediaType: string; data: string; fileUri?: string }
+              let data = img.data
+              if (!data && img.fileUri) {
+                try { data = await readImageAsBase64(img.fileUri) } catch { return null }
+              }
+              if (!data) return null
+              return { id: generateUUID(), dataUrl: `data:${img.mediaType};base64,${data}`, mediaType: img.mediaType }
+            })
+        )
+      ).filter((x): x is ImageAttachment => x !== null)
+
       const { settings } = useSettingsStore.getState()
       if (!settings) return
       await sendMessage(text, settings.defaultModel, settings.defaultProvider, images.length > 0 ? images : undefined)
@@ -360,6 +420,45 @@ export function useChat(conversationId: string | null): UseChatReturn {
   )
 
   return { isStreaming, streamingState, sendMessage, stopStreaming, retryMessage }
+}
+
+/**
+ * For the last user message that contains images, load any file-backed image
+ * blocks back into memory (data field) so the API can send them. All other
+ * messages are returned unchanged — older user images are stripped by
+ * truncateAnthropicMessages anyway, and assistant images are always dropped.
+ */
+async function resolveImagesForApi(messages: Message[]): Promise<Message[]> {
+  let lastUserImageIdx = -1
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === 'user' && messages[i].blocks.some((b) => b.type === 'image')) {
+      lastUserImageIdx = i
+      break
+    }
+  }
+  if (lastUserImageIdx === -1) return messages
+
+  return Promise.all(
+    messages.map(async (msg, idx) => {
+      if (idx !== lastUserImageIdx) return msg
+      const blocks = await Promise.all(
+        msg.blocks.map(async (b) => {
+          if (b.type !== 'image') return b
+          const img = b as { type: 'image'; mediaType: string; data: string; fileUri?: string }
+          if (!img.data && img.fileUri) {
+            try {
+              const data = await readImageAsBase64(img.fileUri)
+              return { ...img, data }
+            } catch {
+              return b // leave as-is if file read fails
+            }
+          }
+          return b
+        })
+      )
+      return { ...msg, blocks }
+    })
+  )
 }
 
 async function generateTitle(

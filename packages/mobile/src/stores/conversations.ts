@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { Conversation, Message, Provider } from '@april/core'
 import * as convStorage from '../platform/conversations'
+import { deleteImageFile } from '../platform/imageStorage'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 
 function generateUUID(): string {
@@ -147,6 +148,18 @@ export const useConversationsStore = create<ConversationsState>((set, get) => ({
   },
 
   deleteConv: async (id) => {
+    // Delete image files referenced by this conversation before removing it
+    const conv = get().conversations.find((c) => c.id === id)
+    if (conv) {
+      for (const msg of conv.messages) {
+        for (const block of msg.blocks) {
+          if (block.type === 'image') {
+            const img = block as { type: 'image'; fileUri?: string }
+            if (img.fileUri) deleteImageFile(img.fileUri).catch(() => {})
+          }
+        }
+      }
+    }
     await convStorage.deleteConversation(id)
     get().removeConversation(id)
   },
