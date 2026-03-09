@@ -241,9 +241,18 @@ export function useChat(conversationId: string | null): UseChatReturn {
 
       let finalMsg: Message | null = null
       try {
+        // Strip image blocks from assistant messages before IPC transfer.
+        // messagesToAnthropicFormat always drops them anyway, but generated images
+        // can be large (500KB–2MB each) and sending them through IPC for every
+        // subsequent message is wasteful and can cause slowdowns.
+        const messagesForPayload = allMessages.map((m) =>
+          m.role === 'assistant'
+            ? { ...m, blocks: m.blocks.filter((b) => b.type !== 'image') }
+            : m
+        )
         finalMsg = (await window.api.sendMessage({
           conversationId: convId,
-          messages: allMessages,
+          messages: messagesForPayload,
           model,
           provider: provider as 'anthropic' | 'openai' | 'ollama',
           enableThinking: provider === 'anthropic' && model.includes('claude-3-7')

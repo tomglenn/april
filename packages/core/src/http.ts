@@ -90,7 +90,7 @@ export interface OpenAICaller {
     quality: string
     background: string
     output_format: string
-  }): Promise<{ data?: Array<{ b64_json?: string }> }>
+  }, signal?: AbortSignal): Promise<{ data?: Array<{ b64_json?: string }> }>
 }
 
 // ── SDK-based implementations (for desktop — wraps existing SDK instances) ──
@@ -125,8 +125,8 @@ export function createSDKOpenAICaller(apiKey: string, baseURL?: string): OpenAIC
     async createChat(params: OpenAICreateParams): Promise<OpenAICreateResponse> {
       return client.chat.completions.create(params)
     },
-    async generateImage(params) {
-      return (client.images.generate as (p: unknown) => Promise<{ data?: Array<{ b64_json?: string }> }>)(params)
+    async generateImage(params, signal?: AbortSignal) {
+      return (client.images.generate as (p: unknown, opts?: unknown) => Promise<{ data?: Array<{ b64_json?: string }> }>)(params, { signal })
     }
   }
 }
@@ -343,14 +343,15 @@ export function createFetchOpenAICaller(apiKey: string, baseURL?: string): OpenA
       return response.json()
     },
 
-    async generateImage(params) {
+    async generateImage(params, signal?: AbortSignal) {
       const response = await fetch(`${base}/v1/images/generations`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`
         },
-        body: JSON.stringify(params)
+        body: JSON.stringify(params),
+        signal
       })
 
       if (!response.ok) {

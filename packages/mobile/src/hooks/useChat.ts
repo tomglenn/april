@@ -236,7 +236,16 @@ export function useChat(conversationId: string | null): UseChatReturn {
 
         if (provider === 'anthropic') {
           const caller = createFetchAnthropicCaller(settings.anthropicApiKey)
-          const anthropicMessages = messagesToAnthropicFormat(allMessages)
+          // Strip image blocks from assistant messages — they are always dropped in
+          // messagesToAnthropicFormat anyway, but removing them first avoids serialising
+          // large generated-image base64 blobs into the API request body needlessly.
+          const anthropicMessages = messagesToAnthropicFormat(
+            allMessages.map((m) =>
+              m.role === 'assistant'
+                ? { ...m, blocks: m.blocks.filter((b) => b.type !== 'image') }
+                : m
+            )
+          )
 
           // Prompt caching markers
           const cachedSystem = systemPrompt
@@ -271,7 +280,13 @@ export function useChat(conversationId: string | null): UseChatReturn {
           const caller = createFetchOpenAICaller(settings.openaiApiKey)
           const openaiMessages = [
             ...(systemPrompt ? [{ role: 'system' as const, content: systemPrompt }] : []),
-            ...messagesToOpenAIFormat(allMessages)
+            ...messagesToOpenAIFormat(
+              allMessages.map((m) =>
+                m.role === 'assistant'
+                  ? { ...m, blocks: m.blocks.filter((b) => b.type !== 'image') }
+                  : m
+              )
+            )
           ]
           finalMsg = await runOpenAILoop(
             caller, model, openaiMessages, sendChunk, controller.signal,
@@ -301,8 +316,8 @@ export function useChat(conversationId: string | null): UseChatReturn {
           }
         }
 
-        // Single persist point
-        await persistConversation(convId)
+        // Single persist point — wrapped so a storage failure never prevents cleanup
+        try { await persistConversation(convId) } catch { /* ignore */ }
 
         setStreamingState((prev) => { const { [convId]: _, ...rest } = prev; return rest })
         streamingConvIdsRef.current.delete(convId)

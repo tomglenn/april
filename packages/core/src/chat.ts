@@ -336,10 +336,12 @@ export async function runAnthropicLoop(
     // Execute each tool and collect results
     const toolResults: AnthropicToolResultBlock[] = []
     for (const tu of turnToolUses) {
+      if (signal.aborted) break
       const input = (() => {
         try { return JSON.parse(tu.input || '{}') } catch { return {} }
       })()
-      const result = await executeTool(tu.name, input, openaiApiKey)
+      const result = await executeTool(tu.name, input, openaiApiKey, signal)
+      if (signal.aborted) break
 
       if (result.type === 'image') {
         allBlocks.push({ type: 'image', mediaType: result.mediaType, data: result.data })
@@ -496,10 +498,12 @@ export async function runOpenAILoop(
 
     // Execute tools
     for (const tc of toolCalls) {
+      if (signal.aborted) break
       const input = (() => {
         try { return JSON.parse(tc.function.arguments) } catch { return {} }
       })()
-      const result = await executeTool(tc.function.name, input, openaiApiKey)
+      const result = await executeTool(tc.function.name, input, openaiApiKey, signal)
+      if (signal.aborted) break
 
       allBlocks.push({ type: 'tool_use', id: tc.id, name: tc.function.name, input })
       if (result.type === 'image') {
