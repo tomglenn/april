@@ -16,6 +16,9 @@
     "build:linux": "npm run build:linux -w @april/desktop",
     "deploy:mac": "npm run deploy:mac -w @april/desktop",
     "postinstall:desktop": "npm run postinstall -w @april/desktop",
-    "clear-state": "rm -rf \"$HOME/Library/Application Support/april-agent-dev\""
+    "clear-state": "rm -rf \"$HOME/Library/Application Support/april-agent-dev\"",
+    "dev:mobile": "npm run dev -w @april/mobile",
+    "ios": "npm run ios -w @april/mobile",
+    "android": "npm run android -w @april/mobile"
   }
 }

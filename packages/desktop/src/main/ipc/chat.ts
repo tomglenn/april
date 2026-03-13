@@ -1,7 +1,5 @@
 import { ipcMain } from 'electron'
 import { setMaxListeners } from 'events'
-import Anthropic from '@anthropic-ai/sdk'
-import OpenAI from 'openai'
 import { getSettings } from '../store'
 import {
   buildSystemPrompt,
@@ -9,7 +7,9 @@ import {
   messagesToOpenAIFormat,
   runAnthropicLoop,
   runOpenAILoop,
-  getAvailableTools
+  getAvailableTools,
+  createSDKAnthropicCaller,
+  createSDKOpenAICaller
 } from '@april/core'
 import type { SendMessagePayload, ChunkData, Message } from '@april/core'
 
@@ -41,7 +41,7 @@ export function registerChatHandlers(): void {
       const availableTools = getAvailableTools(settings)
 
       if (payload.provider === 'anthropic') {
-        const anthropic = new Anthropic({ apiKey: settings.anthropicApiKey })
+        const caller = createSDKAnthropicCaller(settings.anthropicApiKey)
         const anthropicMessages = messagesToAnthropicFormat(payload.messages)
 
         // Mark system prompt and tools for prompt caching
@@ -68,19 +68,19 @@ export function registerChatHandlers(): void {
           baseParams.betas = ['thinking-2025-01-15']
         }
 
-        finalMsg = await runAnthropicLoop(anthropic, baseParams, sendChunk, controller.signal, settings.openaiApiKey, payload.conversationId, settings.anthropicApiKey, settings.recentContextExchanges)
+        finalMsg = await runAnthropicLoop(caller, baseParams, sendChunk, controller.signal, settings.openaiApiKey, payload.conversationId, settings.anthropicApiKey, settings.recentContextExchanges)
       } else if (payload.provider === 'openai' || payload.provider === 'ollama') {
-        const openai = new OpenAI({
-          apiKey: payload.provider === 'openai' ? settings.openaiApiKey : 'ollama',
-          baseURL: payload.provider === 'ollama' ? `${settings.ollamaBaseUrl}/v1` : undefined
-        })
+        const caller = createSDKOpenAICaller(
+          payload.provider === 'openai' ? settings.openaiApiKey : 'ollama',
+          payload.provider === 'ollama' ? `${settings.ollamaBaseUrl}/v1` : undefined
+        )
 
-        const openaiMessages: OpenAI.ChatCompletionMessageParam[] = [
+        const openaiMessages = [
           ...(systemPrompt ? [{ role: 'system' as const, content: systemPrompt }] : []),
           ...messagesToOpenAIFormat(payload.messages)
         ]
 
-        finalMsg = await runOpenAILoop(openai, payload.model, openaiMessages, sendChunk, controller.signal, payload.provider === 'openai' ? availableTools : [], settings.openaiApiKey, payload.conversationId, payload.provider as 'openai' | 'ollama', settings.recentContextExchanges)
+        finalMsg = await runOpenAILoop(caller, payload.model, openaiMessages, sendChunk, controller.signal, payload.provider === 'openai' ? availableTools : [], settings.openaiApiKey, payload.conversationId, payload.provider as 'openai' | 'ollama', settings.recentContextExchanges)
         if (finalMsg) finalMsg.provider = payload.provider
       }
     } catch (err) {
@@ -110,8 +110,8 @@ export function registerChatHandlers(): void {
       const settings = getSettings()
       try {
         if (provider === 'anthropic') {
-          const anthropic = new Anthropic({ apiKey: settings.anthropicApiKey })
-          const response = await anthropic.messages.create({
+          const caller = createSDKAnthropicCaller(settings.anthropicApiKey)
+          const response = await caller.createMessage({
             model,
             max_tokens: 30,
             messages: [
@@ -122,10 +122,10 @@ export function registerChatHandlers(): void {
             ]
           })
           const textBlock = response.content.find((b) => b.type === 'text')
-          return textBlock ? (textBlock as Anthropic.TextBlock).text.trim() : 'New Chat'
+          return textBlock?.text?.trim() ?? 'New Chat'
         } else if (provider === 'openai') {
-          const openai = new OpenAI({ apiKey: settings.openaiApiKey })
-          const response = await openai.chat.completions.create({
+          const caller = createSDKOpenAICaller(settings.openaiApiKey)
+          const response = await caller.createChat({
             model,
             max_tokens: 30,
             messages: [

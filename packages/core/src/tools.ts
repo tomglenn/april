@@ -1,6 +1,6 @@
-import OpenAI from 'openai'
 import { getPlatform } from './platform'
 import { mcpManager } from './mcp'
+import { createFetchOpenAICaller } from './http'
 
 export type ToolResult =
   | { type: 'text'; content: string }
@@ -359,7 +359,7 @@ async function getWeather(location: string): Promise<string> {
 
 // ── Image generation ──────────────────────────────────────────────────────────
 
-async function generateImage(input: unknown, openaiApiKey: string): Promise<ToolResult> {
+async function generateImage(input: unknown, openaiApiKey: string, signal?: AbortSignal): Promise<ToolResult> {
   const {
     prompt,
     size = '1024x1024',
@@ -371,10 +371,8 @@ async function generateImage(input: unknown, openaiApiKey: string): Promise<Tool
     return { type: 'text', content: 'Tool error: An OpenAI API key is required for image generation. Please add yours in Settings.' }
   }
 
-  const openai = new OpenAI({ apiKey: openaiApiKey })
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const response = await (openai.images.generate as (p: any) => Promise<{ data?: Array<{ b64_json?: string }> }>)({
+  const caller = createFetchOpenAICaller(openaiApiKey)
+  const response = await caller.generateImage({
     model: 'gpt-image-1',
     prompt,
     n: 1,
@@ -382,7 +380,7 @@ async function generateImage(input: unknown, openaiApiKey: string): Promise<Tool
     quality,
     background: transparent ? 'transparent' : 'auto',
     output_format: 'png'
-  })
+  }, signal)
 
   const b64 = response.data?.[0]?.b64_json
   if (!b64) return { type: 'text', content: 'Tool error: No image data returned.' }
@@ -433,7 +431,7 @@ function deleteMemoryTool(input: unknown): string {
 
 // ── Executor ─────────────────────────────────────────────────────────────────
 
-export async function executeTool(name: string, input: unknown, openaiApiKey?: string): Promise<ToolResult> {
+export async function executeTool(name: string, input: unknown, openaiApiKey?: string, signal?: AbortSignal): Promise<ToolResult> {
   // MCP tools are namespaced as "mcp__<serverName>__<toolName>"
   if (name.startsWith('mcp__')) {
     try {
@@ -453,7 +451,7 @@ export async function executeTool(name: string, input: unknown, openaiApiKey?: s
       case 'get_weather':
         return { type: 'text', content: await getWeather(inp.location) }
       case 'generate_image':
-        return generateImage(input, openaiApiKey ?? '')
+        return generateImage(input, openaiApiKey ?? '', signal)
       case 'schedule_reminder':
         return { type: 'text', content: await scheduleReminderTool(input) }
       case 'cancel_reminder':

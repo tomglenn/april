@@ -26,7 +26,7 @@ export type ContentBlock =
   | { type: 'thinking'; thinking: string }
   | { type: 'tool_use'; id: string; name: string; input: unknown }
   | { type: 'tool_result'; tool_use_id: string; content: string }
-  | { type: 'image'; mediaType: string; data: string }
+  | { type: 'image'; mediaType: string; data: string; fileUri?: string }
 
 export interface ImageAttachment {
   id: string
