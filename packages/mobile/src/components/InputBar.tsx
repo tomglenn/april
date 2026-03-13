@@ -5,6 +5,7 @@ import {
   Pressable,
   Image,
   StyleSheet,
+  Keyboard,
   NativeSyntheticEvent,
   TextInputContentSizeChangeEventData
 } from 'react-native'
@@ -43,6 +44,7 @@ export function InputBar({
   const handleSend = useCallback(() => {
     const trimmed = text.trim()
     if ((!trimmed && images.length === 0) || isStreaming || !model || missingKey) return
+    Keyboard.dismiss()
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
     onSend(trimmed, images.length > 0 ? images : undefined)
     setText('')
