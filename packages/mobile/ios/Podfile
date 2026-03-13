@@ -61,5 +61,14 @@ target 'April' do
       :mac_catalyst_enabled => false,
       :ccache_enabled => ccache_enabled?(podfile_properties),
     )
+
+    # Fix ExpoModulesCore Swift 6 strict concurrency errors (Xcode 16.2 / Swift 6.0.3)
+    installer.pods_project.targets.each do |target|
+      if ['ExpoModulesCore', 'ExpoModulesJSI'].include?(target.name)
+        target.build_configurations.each do |config|
+          config.build_settings['SWIFT_STRICT_CONCURRENCY'] = 'minimal'
+        end
+      end
+    end
   end
 end

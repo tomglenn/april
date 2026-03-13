@@ -22,7 +22,7 @@
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = April/Info.plist; sourceTree = "<group>"; };
 		19D7C3703602FBCC1B6ABA7D /* Pods-April.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-April.debug.xcconfig"; path = "Target Support Files/Pods-April/Pods-April.debug.xcconfig"; sourceTree = "<group>"; };
 		517C5E0E9DD36F10B738DF9B /* libPods-April.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-April.a"; sourceTree = BUILT_PRODUCTS_DIR; };
-		53121FCF382901F148FE2C08 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = April/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		53121FCF382901F148FE2C08 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = April/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		564BD457EBCAD91EECD3B435 /* Pods-April.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-April.release.xcconfig"; path = "Target Support Files/Pods-April/Pods-April.release.xcconfig"; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = April/SplashScreen.storyboard; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
@@ -119,7 +119,6 @@
 				19D7C3703602FBCC1B6ABA7D /* Pods-April.debug.xcconfig */,
 				564BD457EBCAD91EECD3B435 /* Pods-April.release.xcconfig */,
 			);
-			name = Pods;
 			path = Pods;
 			sourceTree = "<group>";
 		};
@@ -166,7 +165,6 @@
 				LastUpgradeCheck = 1130;
 				TargetAttributes = {
 					13B07F861A680F5B00A75B9A = {
-						DevelopmentTeam = C3SLR8Z4K8;
 						LastSwiftMigration = 1250;
 						ProvisioningStyle = Automatic;
 					};
@@ -349,7 +347,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = C3SLR8Z4K8;
+				DEVELOPMENT_TEAM = N3ZP5PXPUS;
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"$(inherited)",
@@ -368,7 +366,7 @@
 					"-lc++",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG";
-				PRODUCT_BUNDLE_IDENTIFIER = com.april.agent;
+				PRODUCT_BUNDLE_IDENTIFIER = com.tomglenn.april;
 				PRODUCT_NAME = April;
 				SWIFT_OBJC_BRIDGING_HEADER = "April/April-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -388,7 +386,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = C3SLR8Z4K8;
+				DEVELOPMENT_TEAM = N3ZP5PXPUS;
 				INFOPLIST_FILE = April/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -402,7 +400,7 @@
 					"-lc++",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
-				PRODUCT_BUNDLE_IDENTIFIER = com.april.agent;
+				PRODUCT_BUNDLE_IDENTIFIER = com.tomglenn.april;
 				PRODUCT_NAME = April;
 				SWIFT_OBJC_BRIDGING_HEADER = "April/April-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
